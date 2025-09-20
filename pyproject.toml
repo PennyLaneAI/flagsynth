@@ -1,0 +1,29 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rotoptsynth"
+version = "0.1"
+authors = [
+  { name="Korbinian Kottmann" },
+  { name="Guillermo Alonso" },
+  { name="David Wierichs" }
+]
+description = "Rotation-optimal unitary synthesis."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pennylane",
+    "jax==0.6.0",
+    "tqdm",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
