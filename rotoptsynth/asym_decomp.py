@@ -24,6 +24,24 @@ def _complex_sort(x):
     """Sort (and modify!) a complex-valued array by sorting Re(x) + 10⁵ Im(x)."""
     return np.sort(x.real + x.imag * 1e5)
 
+def _complex_sort_2(x):
+    """Sort (and modify!) a complex-valued array by sorting Re(x) + 10⁵ Im(x)."""
+    return np.argsort(x.real + x.imag * 1e5)
+
+def _get_V2_angles(evals):
+    angles = np.angle(evals)
+    abs_angles = np.abs(angles)
+    if np.isclose(abs_angles[0], abs_angles[1]):
+        r = abs_angles[0]
+        s = abs_angles[2]
+    elif np.isclose(abs_angles[0], abs_angles[2]) or np.isclose(abs_angles[0], abs_angles[3]):
+        r = abs_angles[0]
+        s = abs_angles[1]
+    else:
+        raise ValueError("Expected eigenvalues to come in complex conjugate pairs.")
+
+    return (r + s) / 2, (r - s) / 2
+
 def _prop_V2(u):
     """Implement Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033, namely
     find three angles Psi, Theta and Phi such that the eigenvalues of
@@ -41,21 +59,12 @@ def _prop_V2(u):
     Psi = np.arctan2(np.sum(t).imag, (t[0]+t[3]-t[1]-t[2]).real)
     m = _gamma(u @ _CNOT @ _RZ(Psi) @ _CNOT)
     evals = np.linalg.eigvals(m)
-    eval_angles = np.sort(np.angle(evals))
-    r, s = eval_angles[2:]
-    Theta = (r+s)/2
-    Phi = (r-s) / 2
+    Theta, Phi = _get_V2_angles(evals)
 
     if validation_enabled():
         assert has_unit_determinant(m)
         assert is_unitary(m)
         assert np.isclose(np.trace(m).imag, 0.)
-        # "negative"
-        negative_angles = eval_angles[:2]
-        comp_neg_to_pos_angles = -(np.mod(negative_angles+np.pi+1e-10, 2 * np.pi)-np.pi-1e-10)
-        # todo: Reactivate test once the precise condition is understood
-        assert np.allclose(comp_neg_to_pos_angles, eval_angles[3:1:-1]), f"First two angles mod 2π, times -1: {comp_neg_to_pos_angles}\nSecond pair of angles: {eval_angles[3:1:-1]}"
-
         left = _complex_sort(np.linalg.eigvals(m))
         right = _complex_sort(np.linalg.eigvals(_gamma(_CNOT @ _RX_RZ(Theta, Phi) @ _CNOT)))
         assert np.allclose(left, right), f"{left=}\n{right=}"

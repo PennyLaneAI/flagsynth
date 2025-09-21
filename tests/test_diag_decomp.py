@@ -97,7 +97,6 @@ class TestDiagDecomp:
         ros.disable_validation() # todo: make easy to reuse
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        print(wires)
         diag_op, other_ops = ros.diag_decomp(target, wires)
         assert diag_op.wires == wires
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
