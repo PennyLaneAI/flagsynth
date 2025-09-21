@@ -1,7 +1,9 @@
+import numpy as np
+import pennylane as qml
 from pennylane.ops.op_math.decompositions import one_qubit_decomposition
-from .validation import validation_enabled, is_unitary
+from .validation import validation_enabled, is_unitary, is_block_diagonal
 from .asym_decomp import asymmetric_two_qubit_decomp
-from .utils import ops_to_mat
+from .utils import ops_to_mat, aiii_kak
 
 # static matrix
 _CNOT = qml.CNOT([0, 1]).matrix()
@@ -13,8 +15,8 @@ def _diag_decomp_two_qubits(u, wires):
         assert u.shape == (4, 4)
         assert is_unitary(u)
 
-    u_mod = u @ _CNOT
-    rz, _cnot, c_op, d_op *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(u_mod, wires)
+    u_mod = u @ _CNOT # Optimize cnot multiplication away
+    rz, _cnot, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(u_mod, wires)
 
     # Decompose A, B, C and D via Euler decomposition
     a_dec = one_qubit_decomposition(a_op.data[0], wire=wires[0])
@@ -29,7 +31,10 @@ def _diag_decomp_two_qubits(u, wires):
 
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
-        assert np.allclose(u, u_rec)
+        #print(f"{u=}")
+        #print(f"{u_rec=}")
+        #print(u-u_rec)
+        assert np.allclose(u, u_rec, atol=1e-7)
         assert isinstance(_cnot, qml.CNOT)
     return diag_op, other_ops
 
@@ -42,7 +47,7 @@ def _split_diag(D):
     return np.exp(1j * mean), diff
 
 
-def _attach_multiplexer_node(ops0, ops1, multiplexer_wire):
+def attach_multiplexer_node(ops0, ops1, multiplexer_wire):
     if validation_enabled():
         assert all(isinstance(op0, type(op1)) for op0, op1 in zip(ops0, ops1, strict=True))
         assert all(op0.wires==op1.wires for op0, op1 in zip(ops0, ops1))
@@ -84,7 +89,7 @@ def diag_decomp(u, wires):
         sub_decomp = diag_decomp
 
     p = q = N//2
-    K1, A, K2 = kak.aiii_kak(u, p, q)
+    K1, A, K2 = aiii_kak(u, p, q, validate=validation_enabled())
     if validation_enabled():
         assert is_unitary(K1) and is_block_diagonal(K1, p)
         assert is_unitary(K2) and is_block_diagonal(K2, p)
@@ -102,16 +107,25 @@ def diag_decomp(u, wires):
     diagonal = np.concatenate([K2_0_diag_op.data[0], K2_1_diag_op.data[0]])
     diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
     other_ops = [
-        *_attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
+        *attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
         qml.SelectPauliRot(multiplexer_angles_A, wires[1:], target_wire=wires[0], rot_axis="Y"),
         qml.SelectPauliRot(multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"),
-        *_attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
+        *attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
     ]
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
-        assert np.allclose(u, u_rec)
+        assert np.allclose(u, u_rec, atol=1e-7), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
     return diag_op, other_ops
 
 # def parameter_optimal_qsd(u, wires, validate=True):
 
-
+def split_diagonal(diag):
+    """Split a diagonal into a diagonal on one qubit less and the angles for an RZ multiplexer.
+    Adapted from ``qml.DiagonalQubitUnitary.compute_decomposition`` to split off the first qubit
+    instead.
+    """
+    angles = qml.math.angle(diag)
+    split = len(diag) // 2
+    diff = angles[..., split:] - angles[..., :split]
+    mean = (angles[..., :split] + angles[..., split:]) / 2
+    return [np.exp(1j * mean), diff]

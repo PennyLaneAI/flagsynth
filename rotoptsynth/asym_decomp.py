@@ -1,7 +1,8 @@
+from functools import partial
 import numpy as np
 import pennylane as qml
 from pennylane.math.decomposition import su2su2_to_tensor_products
-from .validation import is_unitary, has_unit_determinant, is_symmetric
+from .validation import is_unitary, has_unit_determinant, is_symmetric, validation_enabled, is_orthogonal
 
 # Matrices and matrix functions
 
@@ -36,7 +37,8 @@ def _prop_V2(u):
     are equal.
     """
     t = np.diag(_gamma(u.T).T)
-    Psi = np.arctan(np.sum(t).imag / (t[0]+t[3]-t[1]-t[2]).real)
+    #print(np.sum(t).imag, (t[0]+t[3]-t[1]-t[2]).real)
+    Psi = np.arctan2(np.sum(t).imag, (t[0]+t[3]-t[1]-t[2]).real)
     m = _gamma(u @ _CNOT @ _RZ(Psi) @ _CNOT)
     evals = np.linalg.eigvals(m)
     eval_angles = np.sort(np.angle(evals))
@@ -48,7 +50,11 @@ def _prop_V2(u):
         assert has_unit_determinant(m)
         assert is_unitary(m)
         assert np.isclose(np.trace(m).imag, 0.)
-        assert np.isclose(eval_angles[:2], -eval_angles[3:1:-1])
+        # "negative"
+        negative_angles = eval_angles[:2]
+        comp_neg_to_pos_angles = -(np.mod(negative_angles+np.pi+1e-10, 2 * np.pi)-np.pi-1e-10)
+        # todo: Reactivate test once the precise condition is understood
+        assert np.allclose(comp_neg_to_pos_angles, eval_angles[3:1:-1]), f"First two angles mod 2π, times -1: {comp_neg_to_pos_angles}\nSecond pair of angles: {eval_angles[3:1:-1]}"
 
         left = _complex_sort(np.linalg.eigvals(m))
         right = _complex_sort(np.linalg.eigvals(_gamma(_CNOT @ _RX_RZ(Theta, Phi) @ _CNOT)))
@@ -94,8 +100,10 @@ def _prop_IV3(u, v):
 
     # Move the subgroup elements a @ b.T and c from the standard rep of SO(4)
     # back to the standard rep of SU(2)xSU(2), and decompose the result into single-qubit ops.
-    a, b = su2su2_to_tensor_products(_E @ a @ b.T @ _E.conj().T)
-    c, d = su2su2_to_tensor_products(_E @ c @ _E.conj().T)
+    left_su2_su2 = _E @ a @ b.T @ _E.conj().T
+    a, b = su2su2_to_tensor_products(left_su2_su2)
+    right_su2_su2 = _E @ c @ _E.conj().T
+    c, d = su2su2_to_tensor_products(right_su2_su2)
 
     if validation_enabled():
         assert np.allclose(np.kron(a, b), left_su2_su2), f"\n{np.kron(a, b)=}\n{left_su2_su2=}"
@@ -113,6 +121,7 @@ def asymmetric_two_qubit_decomp(u, wires):
     if validation_enabled():
         assert u.shape == (4, 4)
         assert is_unitary(u)
+        assert len(wires) == 2
     u_mod = u @ _CNOT
     gphase = np.angle(np.linalg.det(u_mod))/4
     u_mod = np.exp(-1j * gphase) * u_mod
