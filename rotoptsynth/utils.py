@@ -1,13 +1,19 @@
+"""This module contains utility functions to convert operators to matrices, perform
+cosine-sine-decompositions of matrices, and to count (non-)Clifford angles."""
+
 import numpy as np
 import pennylane as qml
 from scipy.linalg import cossin
 
 
 def ops_to_mat(ops, wire_order):
+    """Convert a list of operators to their matrix, with respect to the given ``wire_order``."""
     return qml.matrix(qml.tape.QuantumScript(ops), wire_order=wire_order)
 
 
 def aiii_kak(u, p, q, validate):
+    """Decompose a matrix using the cosine-sine-decomposition (CSD) implemented in scipy.
+    Wraps ``scipy.linalg.cossin`` with some validation and a convention adapter."""
     if validate:
         assert u.shape == (p + q, p + q)
     if p == 0 or q == 0:
@@ -50,7 +56,8 @@ def count_clifford(theta, verbose=False, atol=1e-6):
 
     Args:
         theta (TensorLike): Rotation angles
-        verbose (bool): Whether or not to output the angles and their assignments to debugging and sanity-checking
+        verbose (bool): Whether or not to output the angles and their assignments for debugging
+            and sanity-checking
         atol (float): absolute tolerance when comparing values to Clifford angles and zeros
 
     **Example**
@@ -65,7 +72,6 @@ def count_clifford(theta, verbose=False, atol=1e-6):
     (2, 1, 1)
 
     """
-
     params = np.mod(theta + 2 * np.pi, 2 * np.pi)
     params = params / (np.pi / 2)
 
@@ -75,13 +81,16 @@ def count_clifford(theta, verbose=False, atol=1e-6):
 
     for p in params:
         if any(np.isclose(p, val, atol=atol) for val in [0.0, 4.0]):
-            print(f"Zero: {p}") if verbose else None
+            if verbose:
+                print(f"Zero: {p}")
             zeros += 1
         elif any(np.isclose(p, val, atol=atol) for val in [1.0, 2.0, 3.0]):
-            print(f"Clifford: {p}") if verbose else None
+            if verbose:
+                print(f"Clifford: {p}")
             cliffs += 1
         else:
-            print(f"non-Clifford: {p}") if verbose else None
+            if verbose:
+                print(f"non-Clifford: {p}")
             non_cliffs += 1
 
     return (cliffs, non_cliffs, zeros)

@@ -1,4 +1,9 @@
-from collections.abc import Sequence
+"""This module implements a specific two-qubit unitary decomposition from Theorem VI.3
+and Fig. 3 of https://arxiv.org/pdf/quant-ph/0308033, in ``asymmetric_two_qubit_decomp``.
+It is used in the up-to-diagonal decomposition ``diag_decomp``.
+"""
+
+# pylint: disable=too-many-locals
 from functools import partial
 
 import numpy as np
@@ -6,27 +11,32 @@ import pennylane as qml
 from pennylane.math.decomposition import su2su2_to_tensor_products
 
 from .utils import ops_to_mat
-from .validation import (has_unit_determinant, is_orthogonal, is_symmetric,
-                         is_unitary, validation_enabled)
+from .validation import (
+    has_unit_determinant,
+    is_orthogonal,
+    is_symmetric,
+    is_unitary,
+    validation_enabled,
+)
 
 # Matrices and matrix functions
 
-_CNOT = qml.CNOT([0, 1]).matrix()
+_cnot = qml.CNOT([0, 1]).matrix()
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
-_RZ_1 = qml.matrix(partial(qml.RZ, wires=1), wire_order=[0, 1])
+_rz_1 = qml.matrix(partial(qml.RZ, wires=1), wire_order=[0, 1])
 """Matrix of an RZ gate acting on the second of two wires."""
 
-_YY = qml.matrix(qml.Y(0) @ qml.Y(1), wire_order=[0, 1])
+_yy = qml.matrix(qml.Y(0) @ qml.Y(1), wire_order=[0, 1])
 """Matrix of the Pauli word "YY" acting on two wires."""
 
-_E = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 0, 0]]) / np.sqrt(2)
+_magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 0, 0]]) / np.sqrt(2)
 """Matrix that converts between the computational and the magic basis, as defined in the proof
 of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 
 
 @partial(qml.matrix, wire_order=[0, 1])
-def _RX_RZ(theta, phi):
+def _rx_rz(theta, phi):
     """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
     ordering ``[0, 1]``."""
     qml.RX(theta, 0)
@@ -35,7 +45,7 @@ def _RX_RZ(theta, phi):
 
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
-    return u @ _YY @ u.T @ _YY
+    return u @ _yy @ u.T @ _yy
 
 
 def _complex_sort(x):
@@ -43,8 +53,8 @@ def _complex_sort(x):
     return np.sort(x.real + x.imag * 1e5)
 
 
-def _get_V2_angles(evals):
-    r"""This is a helper function for _prop_V2, implementing a step in the proof of
+def _v2_angles(evals):
+    r"""This is a helper function for _prop_v2, implementing a step in the proof of
     Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033.
     Concretely, given the eigenvalues of a special unitary ``m`` in four dimensions,
     we know that they come in two complex conjugate pairs. This function finds one representative
@@ -80,7 +90,7 @@ def _get_V2_angles(evals):
     return (r + s) / 2, (r - s) / 2
 
 
-def _prop_V2(u):
+def _prop_v2(u):
     r"""Implement Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033, namely
     find three angles :math:`\Psi`, :math:`\Theta` and :math:`\Phi` such that the eigenvalues of
 
@@ -108,27 +118,27 @@ def _prop_V2(u):
     """
     # Compute Psi from the diagonal of γ(u.T).T
     t = np.diag(_gamma(u.T).T)
-    Psi = np.arctan2(np.sum(t).imag, (t[0] + t[3] - t[1] - t[2]).real)
+    psi = np.arctan2(np.sum(t).imag, (t[0] + t[3] - t[1] - t[2]).real)
 
     # Compute the LHS of the equation in Prop. V.2
-    m = _gamma(u @ _CNOT @ _RZ_1(Psi) @ _CNOT)
+    m = _gamma(u @ _cnot @ _rz_1(psi) @ _cnot)
 
     # Compute its eigenvalues and the angles Theta and Phi from the args/angles of those eigvals
     evals = np.linalg.eigvals(m)
-    Theta, Phi = _get_V2_angles(evals)
+    theta, phi = _v2_angles(evals)
 
     if validation_enabled():
         assert has_unit_determinant(m)
         assert is_unitary(m)
         assert np.isclose(np.trace(m).imag, 0.0)
         left = _complex_sort(np.linalg.eigvals(m))
-        right = _complex_sort(np.linalg.eigvals(_gamma(_CNOT @ _RX_RZ(Theta, Phi) @ _CNOT)))
+        right = _complex_sort(np.linalg.eigvals(_gamma(_cnot @ _rx_rz(theta, phi) @ _cnot)))
         assert np.allclose(left, right), f"{left=}\n{right=}"
 
-    return Psi, Theta, Phi
+    return psi, theta, phi
 
 
-def _prop_IV3(u, v):
+def _prop_iv3(u, v):
     r"""Given two two-qubit matrices :math:`U, V` that are guaranteed to be equal up to
     multiplication by single-qubit unitaries on either side, find the single-qubit
     unitaries :math:`a,b,c,d` such that
@@ -153,8 +163,8 @@ def _prop_IV3(u, v):
     # Move u and v to new representation of unitary group. This is necessary
     # because we want to move the AI subgroup SO(4) back to the standard rep of SU(2)xSU(2)
     # later on by undoing this representation change.
-    new_u = _E.conj().T @ u @ _E
-    new_v = _E.conj().T @ v @ _E
+    new_u = _magic_basis.conj().T @ u @ _magic_basis
+    new_v = _magic_basis.conj().T @ v @ _magic_basis
     # Compute relative complex structures for AI decomposition in its standard rep.
     delta_u = new_u @ new_u.T
     delta_v = new_v @ new_v.T
@@ -181,9 +191,9 @@ def _prop_IV3(u, v):
 
     # Move the subgroup elements a @ b.T and c from the standard rep of SO(4)
     # back to the standard rep of SU(2)xSU(2), and decompose the result into single-qubit ops.
-    left_su2_su2 = _E @ a @ b.T @ _E.conj().T
+    left_su2_su2 = _magic_basis @ a @ b.T @ _magic_basis.conj().T
     a, b = su2su2_to_tensor_products(left_su2_su2)
-    right_su2_su2 = _E @ c @ _E.conj().T
+    right_su2_su2 = _magic_basis @ c @ _magic_basis.conj().T
     c, d = su2su2_to_tensor_products(right_su2_su2)
 
     if validation_enabled():
@@ -224,29 +234,29 @@ def asymmetric_two_qubit_decomp(u, wires):
         assert u.shape == (4, 4)
         assert is_unitary(u)
         assert len(wires) == 2
-    u_mod = u @ _CNOT
+    u_mod = u @ _cnot
     gphase = np.angle(np.linalg.det(u_mod)) / 4
     u_mod = np.exp(-1j * gphase) * u_mod
 
     with qml.queuing.QueuingManager.stop_recording():
-        Psi, Theta, Phi = _prop_V2(u_mod)
-        U = u_mod @ _CNOT @ _RZ_1(Psi) @ _CNOT
-        V = _CNOT @ _RX_RZ(Theta, Phi) @ _CNOT
-        a, b, c, d = _prop_IV3(U, V)
+        psi, theta, phi = _prop_v2(u_mod)
+        _u = u_mod @ _cnot @ _rz_1(psi) @ _cnot
+        v = _cnot @ _rx_rz(theta, phi) @ _cnot
+        a, b, c, d = _prop_iv3(_u, v)
         if validation_enabled():
-            assert np.allclose(np.kron(a, b) @ V @ np.kron(c, d), U)
+            assert np.allclose(np.kron(a, b) @ v @ np.kron(c, d), _u)
             assert np.allclose(
-                u_mod, np.kron(a, b) @ V @ np.kron(c, d) @ _CNOT @ _RZ_1(-Psi) @ _CNOT
+                u_mod, np.kron(a, b) @ v @ np.kron(c, d) @ _cnot @ _rz_1(-psi) @ _cnot
             )
 
     ops = [
-        qml.RZ(-Psi, wires[1]),
+        qml.RZ(-psi, wires[1]),
         qml.CNOT(wires),
         qml.QubitUnitary(c, wires[0]),
         qml.QubitUnitary(d, wires[1]),
         qml.CNOT(wires),
-        qml.RX(Theta, wires[0]),
-        qml.RZ(Phi, wires[1]),
+        qml.RX(theta, wires[0]),
+        qml.RZ(phi, wires[1]),
         qml.CNOT(wires),
         qml.QubitUnitary(a, wires[0]),
         qml.QubitUnitary(b, wires[1]),

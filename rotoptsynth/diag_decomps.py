@@ -1,3 +1,9 @@
+"""This module implements a specific unitary decomposition that pulls out a diagonal to
+one side. It is built recursively upon the two-qubit case, which in turn is presented
+in https://arxiv.org/pdf/quant-ph/0406176.
+"""
+
+# pylint: disable=too-many-locals
 from collections.abc import Hashable, Sequence
 
 import numpy as np
@@ -11,7 +17,7 @@ from .utils import aiii_kak, ops_to_mat
 from .validation import is_block_diagonal, is_unitary, validation_enabled
 
 # static matrix
-_CNOT = qml.CNOT([0, 1]).matrix()
+_cnot = qml.CNOT([0, 1]).matrix()
 
 
 def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
@@ -47,11 +53,9 @@ def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, 
         assert u.shape == (4, 4)
         assert is_unitary(u)
 
-    u_mod = u @ _CNOT  # Optimize cnot multiplication away
+    u_mod = u @ _cnot  # Optimize cnot multiplication away
     with qml.QueuingManager.stop_recording():
-        rz, _cnot, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(
-            u_mod, wires
-        )
+        rz, _, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(u_mod, wires)
 
         # Decompose A, B, C and D via Euler decomposition
         a_dec = one_qubit_decomposition(a_op.data[0], wire=wires[0])
@@ -67,7 +71,7 @@ def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, 
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
         assert np.allclose(u, u_rec, atol=1e-7)
-        assert isinstance(_cnot, qml.CNOT)
+        assert isinstance(_, qml.CNOT)
 
     if qml.QueuingManager.recording():
         qml.apply(diag_op)
@@ -184,7 +188,7 @@ def split_diagonal(diag: np.ndarray) -> tuple[np.ndarray]:
         yields the input diagonal.
 
     """
-    angles = qml.math.angle(diag)
+    angles = qml.math.angle(diag)  # pylint: disable=no-member
     split = len(diag) // 2
     diff = angles[..., split:] - angles[..., :split]
     mean = (angles[..., :split] + angles[..., split:]) / 2
@@ -210,39 +214,39 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
 
     Uses the RotOptSynth validation toggle.
     """
-    N = len(u)
-    if N == 4:
+    dim = len(u)
+    if dim == 4:
         return _diag_decomp_two_qubits(u, wires)
-    elif N == 8:
+    if dim == 8:
         sub_decomp = _diag_decomp_two_qubits
     else:
         sub_decomp = diag_decomp
 
-    p = q = N // 2
-    K1, A, K2 = aiii_kak(u, p, q, validate=validation_enabled())
+    p = q = dim // 2
+    k1, a, k2 = aiii_kak(u, p, q, validate=validation_enabled())
     if validation_enabled():
-        assert is_unitary(K1) and is_block_diagonal(K1, p)
-        assert is_unitary(K2) and is_block_diagonal(K2, p)
+        assert is_unitary(k1) and is_block_diagonal(k1, p)
+        assert is_unitary(k2) and is_block_diagonal(k2, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        K1_0_diag_op, K1_0_ops = sub_decomp(K1[:p, :p], wires=wires[1:])
-        K1_1_diag_op, K1_1_ops = sub_decomp(K1[p:, p:], wires=wires[1:])
-        smaller_diag, multiplexer_angles_K1 = split_diagonal(
-            np.concatenate([K1_0_diag_op.data[0], K1_1_diag_op.data[0]])
+        k1_0_diag_op, k1_0_ops = sub_decomp(k1[:p, :p], wires=wires[1:])
+        k1_1_diag_op, k1_1_ops = sub_decomp(k1[p:, p:], wires=wires[1:])
+        smaller_diag, multiplexer_angles_k1 = split_diagonal(
+            np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])
         )
-        K2_0_diag_op, K2_0_ops = sub_decomp(np.diag(smaller_diag) @ K2[:p, :p], wires=wires[1:])
-        K2_1_diag_op, K2_1_ops = sub_decomp(np.diag(smaller_diag) @ K2[p:, p:], wires=wires[1:])
-        multiplexer_angles_A = -2 * np.arctan2(np.diag(A, k=p), np.diag(A)[:p])
+        k2_0_diag_op, k2_0_ops = sub_decomp(np.diag(smaller_diag) @ k2[:p, :p], wires=wires[1:])
+        k2_1_diag_op, k2_1_ops = sub_decomp(np.diag(smaller_diag) @ k2[p:, p:], wires=wires[1:])
+        multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
-        diagonal = np.concatenate([K2_0_diag_op.data[0], K2_1_diag_op.data[0]])
+        diagonal = np.concatenate([k2_0_diag_op.data[0], k2_1_diag_op.data[0]])
         diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
         other_ops = [
-            *attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
-            qml.SelectPauliRot(multiplexer_angles_A, wires[1:], target_wire=wires[0], rot_axis="Y"),
+            *attach_multiplexer_node(k2_0_ops, k2_1_ops, multiplexer_wire=wires[0]),
+            qml.SelectPauliRot(multiplexer_angles_a, wires[1:], target_wire=wires[0], rot_axis="Y"),
             qml.SelectPauliRot(
-                multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"
+                multiplexer_angles_k1, wires[1:], target_wire=wires[0], rot_axis="Z"
             ),
-            *attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
+            *attach_multiplexer_node(k1_0_ops, k1_1_ops, multiplexer_wire=wires[0]),
         ]
         if validation_enabled():
             u_rec = ops_to_mat([diag_op] + other_ops, wires)

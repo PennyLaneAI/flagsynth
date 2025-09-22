@@ -1,10 +1,17 @@
+"""This module contains the main function to perform rotation-angle-optimal unitary synthesis,
+called ``rot_opt_synth`` (at the moment)."""
+
+# pylint: disable=too-many-locals
 from collections.abc import Sequence
 
 import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions.unitary_decompositions import (
-    _compute_udv, _cossin_decomposition, _decompose_3_cnots)
+    _compute_udv,
+    _cossin_decomposition,
+    _decompose_3_cnots,
+)
 from pennylane.wires import WiresLike
 
 from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
@@ -44,26 +51,26 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
         return ops
 
     p = len(u) // 2
-    (K00, K01), mplx_angles_ry, (K10, K11) = _cossin_decomposition(u, p)
+    (k00, k01), mplx_angles_ry, (k10, k11) = _cossin_decomposition(u, p)
 
     with qml.QueuingManager.stop_recording():
-        # Diag-decompose K00 and K01
-        diag_k00, other_ops_00 = diag_decomp(K00, wires[1:])
-        diag_k01, other_ops_01 = diag_decomp(K01, wires[1:])
+        # Diag-decompose k00 and k01
+        diag_k00, other_ops_00 = diag_decomp(k00, wires[1:])
+        diag_k01, other_ops_01 = diag_decomp(k01, wires[1:])
 
         sub_diag, mplx_angles_rz = split_diagonal(
             np.concatenate([diag_k00.data[0], diag_k01.data[0]])
         )
-        # todo: make multiplication more efficient
-        K10 = np.diag(sub_diag) @ K10
-        K11 = np.diag(sub_diag) @ K11
+        k10 = sub_diag[:, None] * k10
+        k11 = sub_diag[:, None] * k11
 
-        u_sub, d_sub, v_sub = _compute_udv(K10, K11)
+        u_sub, d_sub, v_sub = _compute_udv(k10, k11)
         diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
         v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
 
         new_ops = [
             *rot_opt_synth(v_sub, wires[1:]),
+            # pylint: disable=no-member
             qml.SelectPauliRot(
                 -2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
             ),
@@ -76,9 +83,9 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
     if validation_enabled():
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
-        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, K10)
+        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, k10)
         assert np.allclose(
-            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, K11
+            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, k11
         )
 
         u_rec = ops_to_mat(new_ops, wires)
