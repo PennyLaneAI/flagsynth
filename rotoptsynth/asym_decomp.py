@@ -1,16 +1,13 @@
 from collections.abc import Sequence
 from functools import partial
+
 import numpy as np
 import pennylane as qml
 from pennylane.math.decomposition import su2su2_to_tensor_products
-from .validation import (
-    is_unitary,
-    has_unit_determinant,
-    is_symmetric,
-    validation_enabled,
-    is_orthogonal,
-)
+
 from .utils import ops_to_mat
+from .validation import (has_unit_determinant, is_orthogonal, is_symmetric,
+                         is_unitary, validation_enabled)
 
 # Matrices and matrix functions
 

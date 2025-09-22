@@ -1,12 +1,14 @@
-from collections.abc import Sequence, Hashable
+from collections.abc import Hashable, Sequence
+
 import numpy as np
 import pennylane as qml
-from pennylane.ops.op_math.decompositions import one_qubit_decomposition
 from pennylane.operation import Operator
+from pennylane.ops.op_math.decompositions import one_qubit_decomposition
 from pennylane.wires import WiresLike
-from .validation import validation_enabled, is_unitary, is_block_diagonal
+
 from .asym_decomp import asymmetric_two_qubit_decomp
-from .utils import ops_to_mat, aiii_kak
+from .utils import aiii_kak, ops_to_mat
+from .validation import is_block_diagonal, is_unitary, validation_enabled
 
 # static matrix
 _CNOT = qml.CNOT([0, 1]).matrix()

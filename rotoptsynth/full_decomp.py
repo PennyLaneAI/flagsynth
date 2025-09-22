@@ -1,16 +1,15 @@
 from collections.abc import Sequence
+
 import numpy as np
 import pennylane as qml
-from .diag_decomps import diag_decomp, attach_multiplexer_node, split_diagonal
-from .utils import ops_to_mat
-from .validation import validation_enabled, is_unitary
 from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions.unitary_decompositions import (
-    _cossin_decomposition,
-    _compute_udv,
-    _decompose_3_cnots,
-)
+    _compute_udv, _cossin_decomposition, _decompose_3_cnots)
 from pennylane.wires import WiresLike
+
+from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
+from .utils import ops_to_mat
+from .validation import is_unitary, validation_enabled
 
 
 def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
