@@ -1,6 +1,9 @@
+from collections.abc import Sequence, Hashable
 import numpy as np
 import pennylane as qml
 from pennylane.ops.op_math.decompositions import one_qubit_decomposition
+from pennylane.operation import Operator
+from pennylane.wires import WiresLike
 from .validation import validation_enabled, is_unitary, is_block_diagonal
 from .asym_decomp import asymmetric_two_qubit_decomp
 from .utils import ops_to_mat, aiii_kak
@@ -8,70 +11,154 @@ from .utils import ops_to_mat, aiii_kak
 # static matrix
 _CNOT = qml.CNOT([0, 1]).matrix()
 
-def _diag_decomp_two_qubits(u, wires):
-    """Compute the decomposition of a two-qubit unitary into a diagonal and a remaining decomposition as
-    reported in Theorem 14 of the QSD paper (Shende et al. https://arxiv.org/pdf/quant-ph/0406176)."""
+
+def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
+    """Compute the decomposition of a two-qubit unitary into a diagonal and a remaining
+    decomposition:
+
+    ```
+    0: ─╭Diag──RY──RZ─╭●──RX─╭●──RZ──RY──RZ─┤
+    1: ─╰Diag──RY──RZ─╰X──RZ─╰X──RZ──RY──RZ─┤
+    ```
+
+    This decomposition is reported in Theorem 14 of the Quantum Shannon decomposition paper
+    (Shende et al. https://arxiv.org/pdf/quant-ph/0406176). It is built on top of
+    ``asymmetric_two_qubit_decomp``, an implementation of Theorem VI.3 and Fig. 3 of
+    https://arxiv.org/pdf/quant-ph/0308033.
+
+    Args:
+        u (np.ndarray): Unitary matrix to be decomposed.
+        wires (qml.wires.WiresLike): Wires on which the operators in the decomposition should act.
+
+    Returns:
+        tuple[qml.operation.Operator, list[qml.operation.Operator]]: Diagonal operator
+        (of type ``DiagonalQubitUnitary``) and list of other operators. The decomposition
+        is provided in the circuit decomposition order, the inverse of the matrix multiplication
+        order.
+
+    Queues:
+        The same operators as are returned.
+
+    Uses the RotOptSynth validation toggle.
+    """
     if validation_enabled():
         assert u.shape == (4, 4)
         assert is_unitary(u)
 
-    u_mod = u @ _CNOT # Optimize cnot multiplication away
-    rz, _cnot, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(u_mod, wires)
+    u_mod = u @ _CNOT  # Optimize cnot multiplication away
+    with qml.QueuingManager.stop_recording():
+        rz, _cnot, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(
+            u_mod, wires
+        )
 
-    # Decompose A, B, C and D via Euler decomposition
-    a_dec = one_qubit_decomposition(a_op.data[0], wire=wires[0])
-    b_dec = one_qubit_decomposition(b_op.data[0], wire=wires[1])
-    c_rz0, c_ry, c_rz1 = one_qubit_decomposition(c_op.data[0], wire=wires[0])
-    d_rz0, d_ry, d_rz1 = one_qubit_decomposition(d_op.data[0], wire=wires[1])
+        # Decompose A, B, C and D via Euler decomposition
+        a_dec = one_qubit_decomposition(a_op.data[0], wire=wires[0])
+        b_dec = one_qubit_decomposition(b_op.data[0], wire=wires[1])
+        c_rz0, c_ry, c_rz1 = one_qubit_decomposition(c_op.data[0], wire=wires[0])
+        d_rz0, d_ry, d_rz1 = one_qubit_decomposition(d_op.data[0], wire=wires[1])
 
-    diag_ops = [qml.IsingZZ(rz.data[0], wires=wires), c_rz0, d_rz0, gphase]
-    diagonal = np.diag(ops_to_mat(diag_ops, wires))
-    diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
-    other_ops = [c_ry, c_rz1, d_ry, d_rz1, *rest_ops, *a_dec, *b_dec]
+        diag_ops = [qml.IsingZZ(rz.data[0], wires=wires), c_rz0, d_rz0, gphase]
+        diagonal = np.diag(ops_to_mat(diag_ops, wires))
+        diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
+        other_ops = [c_ry, c_rz1, d_ry, d_rz1, *rest_ops, *a_dec, *b_dec]
 
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
-        #print(f"{u=}")
-        #print(f"{u_rec=}")
-        #print(u-u_rec)
         assert np.allclose(u, u_rec, atol=1e-7)
         assert isinstance(_cnot, qml.CNOT)
+
+    if qml.QueuingManager.recording():
+        qml.apply(diag_op)
+        for op in other_ops:
+            qml.apply(op)
+
     return diag_op, other_ops
 
 
-def _split_diag(D):
-    angles = qml.math.angle(D)
-    n = len(D) // 2
-    diff = angles[..., n:] - angles[..., :n]
-    mean = (angles[..., :n] + angles[..., n:]) / 2
-    return np.exp(1j * mean), diff
+def attach_multiplexer_node(
+    ops0: Sequence[Operator], ops1: Sequence[Operator], multiplexer_wire: Hashable
+) -> list[Operator]:
+    """Create multiplexed operations from two sequences of operators of same type sequences.
 
+    Args:
+        ops0 (Sequence[qml.operation.Operator]): First sequence of operators.
+        ops1 (Sequence[qml.operation.Operator]): Second sequence of operators. Needs to have
+            the same length as ``ops0`` and ``ops1[i]`` needs to be of the same type
+            as ``ops0[i]``, and act on the same wires, for all applicable ``i``.
+        multiplexer_wire (Hashable): Label for the multiplexing (i.e. controlling) wire.
 
-def attach_multiplexer_node(ops0, ops1, multiplexer_wire):
+    Returns:
+        list[qml.operation.Operator]: Multiplexed operators.
+
+    Queues:
+        Same multiplexed operators.
+
+    .. note::
+
+        Currently, only the following operator types are supported:
+        ``qml.RX``,
+        ``qml.RY``,
+        ``qml.RZ``,
+        ``qml.CNOT``,
+        ``qml.CZ``,
+        ``qml.SelectPauliRot``.
+
+    **Examples**
+
+    A pair of rotation gates of type, say, ``qml.RY`` will be multiplexed into a
+    ``qml.SelectPauliRot``:
+
+    >>> import rotoptsynth as ros
+    >>> ros.attach_multiplexer_node([qml.RY(0.6, 0)], [qml.RY(-0.1, 0)], "mpx")
+    [SelectPauliRot(array([ 0.6, -0.1]), wires=['mpx', 0])]
+
+    A pair of ``qml.SelectPauliRot`` gates will simply obtain a new multiplexing wire:
+
+    >>> ops0 = [qml.SelectPauliRot([0.6, 0.7], [0], target_wire="target", rot_axis="X")]
+    >>> ops1 = [qml.SelectPauliRot([0.2, -0.5], [0], target_wire="target", rot_axis="X")]
+    >>> ros.attach_multiplexer_node(ops0, ops1, "new mpx")
+    [SelectPauliRot(array([ 0.6,  0.7,  0.2, -0.5]), wires=['new mpx', 0, 'target'])]
+
+    A pair of static gates, like ``qml.CNOT``, simply leads to the same gate:
+
+    >>> ros.attach_multiplexer_node([qml.CNOT([0, 1])], [qml.CNOT([0, 1])], "mpx")
+    [CNOT(wires=[0, 1])]
+
+    Uses the RotOptSynth validation toggle.
+    """
     if validation_enabled():
         assert all(isinstance(op0, type(op1)) for op0, op1 in zip(ops0, ops1, strict=True))
-        assert all(op0.wires==op1.wires for op0, op1 in zip(ops0, ops1))
+        assert all(op0.wires == op1.wires for op0, op1 in zip(ops0, ops1, strict=True))
+        assert all(
+            op0.hyperparameters["rot_axis"] == op1.hyperparameters["rot_axis"]
+            for op0, op1 in zip(ops0, ops1, strict=True)
+            if isinstance(op0, qml.SelectPauliRot)
+        )
 
     new_ops = []
     for op0, op1 in zip(ops0, ops1):
         if isinstance(op0, (qml.RX, qml.RY, qml.RZ)):
-            new_ops.append(qml.SelectPauliRot(
-                angles=[op0.data[0], op1.data[0]],
-                control_wires=[multiplexer_wire],
-                target_wire=op0.wires[0],
-                rot_axis=op0.name[-1],
-            ))
+            new_ops.append(
+                qml.SelectPauliRot(
+                    angles=[op0.data[0], op1.data[0]],
+                    control_wires=[multiplexer_wire],
+                    target_wire=op0.wires[0],
+                    rot_axis=op0.name[-1],
+                )
+            )
         elif isinstance(op0, (qml.CNOT, qml.CZ)):
             new_ops.append(op0)
             if qml.queuing.QueuingManager.recording():
                 qml.apply(op0)
         elif isinstance(op0, qml.SelectPauliRot):
-            new_ops.append(qml.SelectPauliRot(
-                angles=np.concatenate([op0.data[0], op1.data[0]]),
-                control_wires=[multiplexer_wire]+list(op0.hyperparameters["control_wires"]),
-                target_wire=op0.hyperparameters["target_wire"],
-                rot_axis=op0.hyperparameters["rot_axis"],
-            ))
+            new_ops.append(
+                qml.SelectPauliRot(
+                    angles=np.concatenate([op0.data[0], op1.data[0]]),
+                    control_wires=[multiplexer_wire] + list(op0.hyperparameters["control_wires"]),
+                    target_wire=op0.hyperparameters["target_wire"],
+                    rot_axis=op0.hyperparameters["rot_axis"],
+                )
+            )
         else:
             raise NotImplementedError(
                 f"attaching multiplexer node to op of type {type(op0)} ({op0}) is not supported."
@@ -79,9 +166,47 @@ def attach_multiplexer_node(ops0, ops1, multiplexer_wire):
 
     return new_ops
 
-def diag_decomp(u, wires):
-    """Compute the decomposition of ``u`` up to a diagonal, which is returned separately.
-    Uses recursion with ``_diag_decomp_two_qubits`` as base case.
+
+def split_diagonal(diag: np.ndarray) -> tuple[np.ndarray]:
+    """Split a diagonal into a diagonal on one qubit less and the angles for an RZ multiplexer.
+    Adapted from ``qml.DiagonalQubitUnitary.compute_decomposition`` to split off the first qubit
+    instead of the last.
+
+    Args:
+        diag (np.ndarray): Diagonal to be split
+
+    Returns:
+        tuple(np.ndarray): Diagonal on one qubit less and angles to be passed
+        into ``qml.SelectPauliRot`` so that a ``DiagonalQubitUnitary`` of the first return value
+        multiplied with ``qml.SelectPauliRot`` of the second return value with ``rot_axis="Z"``
+        yields the input diagonal.
+
+    """
+    angles = qml.math.angle(diag)
+    split = len(diag) // 2
+    diff = angles[..., split:] - angles[..., :split]
+    mean = (angles[..., :split] + angles[..., split:]) / 2
+    return [np.exp(1j * mean), diff]
+
+
+def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
+    """Compute the decomposition of ``u`` into a diagonal, which is returned separately,
+    and other operators. Uses recursion, with ``_diag_decomp_two_qubits`` as the base case.
+
+    Args:
+        u (np.ndarray): Unitary to be decomposed.
+        wires (qml.wires.WiresLike): Wires that the operators in the decomposition should act on.
+
+    Returns:
+        tuple[qml.operation.Operator, list[qml.operation.Operator]]: Diagonal operator
+        (of type ``DiagonalQubitUnitary``) and list of other operators. The decomposition
+        is provided in the circuit decomposition order, the inverse of the matrix multiplication
+        order.
+
+    Queues:
+        The same operators as are returned.
+
+    Uses the RotOptSynth validation toggle.
     """
     N = len(u)
     if N == 4:
@@ -91,7 +216,7 @@ def diag_decomp(u, wires):
     else:
         sub_decomp = diag_decomp
 
-    p = q = N//2
+    p = q = N // 2
     K1, A, K2 = aiii_kak(u, p, q, validate=validation_enabled())
     if validation_enabled():
         assert is_unitary(K1) and is_block_diagonal(K1, p)
@@ -100,7 +225,7 @@ def diag_decomp(u, wires):
     with qml.queuing.QueuingManager.stop_recording():
         K1_0_diag_op, K1_0_ops = sub_decomp(K1[:p, :p], wires=wires[1:])
         K1_1_diag_op, K1_1_ops = sub_decomp(K1[p:, p:], wires=wires[1:])
-        smaller_diag, multiplexer_angles_K1 = _split_diag(
+        smaller_diag, multiplexer_angles_K1 = split_diagonal(
             np.concatenate([K1_0_diag_op.data[0], K1_1_diag_op.data[0]])
         )
         K2_0_diag_op, K2_0_ops = sub_decomp(np.diag(smaller_diag) @ K2[:p, :p], wires=wires[1:])
@@ -117,18 +242,7 @@ def diag_decomp(u, wires):
     ]
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
-        assert np.allclose(u, u_rec, atol=1e-7), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
+        assert np.allclose(
+            u, u_rec, atol=1e-7
+        ), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
     return diag_op, other_ops
-
-# def parameter_optimal_qsd(u, wires, validate=True):
-
-def split_diagonal(diag):
-    """Split a diagonal into a diagonal on one qubit less and the angles for an RZ multiplexer.
-    Adapted from ``qml.DiagonalQubitUnitary.compute_decomposition`` to split off the first qubit
-    instead.
-    """
-    angles = qml.math.angle(diag)
-    split = len(diag) // 2
-    diff = angles[..., split:] - angles[..., :split]
-    mean = (angles[..., :split] + angles[..., split:]) / 2
-    return [np.exp(1j * mean), diff]

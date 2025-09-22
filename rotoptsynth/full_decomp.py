@@ -3,8 +3,11 @@ import pennylane as qml
 from .diag_decomps import diag_decomp, attach_multiplexer_node, split_diagonal
 from .utils import ops_to_mat
 from .validation import validation_enabled, is_unitary
-from pennylane.ops.op_math.decompositions.unitary_decompositions import _cossin_decomposition, _compute_udv, _decompose_3_cnots
-
+from pennylane.ops.op_math.decompositions.unitary_decompositions import (
+    _cossin_decomposition,
+    _compute_udv,
+    _decompose_3_cnots,
+)
 
 
 def rot_opt_synth(u, wires):
@@ -32,7 +35,9 @@ def rot_opt_synth(u, wires):
         diag_k00, other_ops_00 = diag_decomp(K00, wires[1:])
         diag_k01, other_ops_01 = diag_decomp(K01, wires[1:])
 
-        sub_diag, mplx_angles_rz = split_diagonal(np.concatenate([diag_k00.data[0], diag_k01.data[0]]))
+        sub_diag, mplx_angles_rz = split_diagonal(
+            np.concatenate([diag_k00.data[0], diag_k01.data[0]])
+        )
         # todo: make multiplication more efficient
         K10 = np.diag(sub_diag) @ K10
         K11 = np.diag(sub_diag) @ K11
@@ -43,7 +48,9 @@ def rot_opt_synth(u, wires):
 
     new_ops = [
         *rot_opt_synth(v_sub, wires[1:]),
-        qml.SelectPauliRot(-2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
+        qml.SelectPauliRot(
+            -2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
+        ),
         *other_ops_u_sub,
         qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
         qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
@@ -54,11 +61,11 @@ def rot_opt_synth(u, wires):
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
         assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, K10)
-        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, K11)
+        assert np.allclose(
+            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, K11
+        )
 
         u_rec = ops_to_mat(new_ops, wires)
         assert np.allclose(u, u_rec, atol=1e-7)
 
     return new_ops
-
-

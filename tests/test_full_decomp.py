@@ -49,17 +49,17 @@ class TestRotOptDecomp:
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target):
         ros.enable_validation() # todo: make easy to reuse
-        _ = ros.rot_opt_decomp(target, [0, 1])
+        _ = ros.rot_opt_synth(target, [0, 1])
 
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target):
         ros.enable_validation() # todo: make easy to reuse
-        _ = ros.rot_opt_decomp(target, [0, 1, 2])
+        _ = ros.rot_opt_synth(target, [0, 1, 2])
 
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target):
         ros.enable_validation() # todo: make easy to reuse
-        _ = ros.rot_opt_decomp(target, [0, 1, 2, 3])
+        _ = ros.rot_opt_synth(target, [0, 1, 2, 3])
 
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])
     @pytest.mark.parametrize("target", targets)
@@ -67,7 +67,7 @@ class TestRotOptDecomp:
         ros.disable_validation() # todo: make easy to reuse
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        ops = ros.rot_opt_decomp(target, wires)
+        ops = ros.rot_opt_synth(target, wires)
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.parametrize("n", [2, 3, 4, 5])
@@ -75,7 +75,7 @@ class TestRotOptDecomp:
         ros.disable_validation() # todo: make easy to reuse
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_decomp(target, range(n))
+            ops = ros.rot_opt_synth(target, range(n))
 
         assert ops == q.queue
 

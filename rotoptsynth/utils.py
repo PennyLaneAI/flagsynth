@@ -2,6 +2,7 @@ import pennylane as qml
 import numpy as np
 from scipy.linalg import cossin
 
+
 def ops_to_mat(ops, wire_order):
     return qml.matrix(qml.tape.QuantumScript(ops), wire_order=wire_order)
 

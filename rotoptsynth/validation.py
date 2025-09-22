@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def toggle_validation():
     """A closure that toggles the validation of synthesis inputs and outputs on and off."""
 
@@ -41,22 +42,27 @@ def toggle_validation():
 
     return enable, disable, status
 
+
 enable_validation, disable_validation, validation_enabled = toggle_validation()
+
 
 def is_unitary(arr):
     return np.allclose(arr.conj().T @ arr, np.eye(len(arr)))
 
+
 def is_orthogonal(arr):
     return np.allclose(arr.T @ arr, np.eye(len(arr)))
+
 
 def is_symmetric(arr):
     return np.allclose(arr, arr.T)
 
+
 def has_unit_determinant(arr):
-    return np.isclose(np.linalg.det(arr), 1.)
+    return np.isclose(np.linalg.det(arr), 1.0)
+
 
 def is_block_diagonal(arr, first_block_size):
-    return (
-        np.allclose(arr[:first_block_size, first_block_size:], 0.)
-        and np.allclose(arr[first_block_size:, :first_block_size], 0.)
+    return np.allclose(arr[:first_block_size, first_block_size:], 0.0) and np.allclose(
+        arr[first_block_size:, :first_block_size], 0.0
     )
