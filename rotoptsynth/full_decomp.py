@@ -2,7 +2,8 @@
 called ``rot_opt_synth`` (at the moment)."""
 
 # pylint: disable=too-many-locals
-from collections.abc import Sequence
+from collections.abc import Sequence, Hashable
+from typing import Optional
 
 import numpy as np
 import pennylane as qml
@@ -18,13 +19,38 @@ from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 
+def _decompose_first_mplx(a, b, wires, first_wire_zeroed):
+    """Decompose the first multiplexer (in circuit ordering, not matrix multiplication ordering)
+    of an AIII Cartan decomposition, using information about the first wire being zeroed or not."""
 
-def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
+    if first_wire_zeroed:
+        return rot_opt_synth(a, wires[1:])
+
+    u_sub, d_sub, v_sub = _compute_udv(a, b)
+    diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
+    v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
+
+    if validation_enabled():
+        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, a)
+        assert np.allclose(
+            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, b
+        )
+    return [
+        *rot_opt_synth(v_sub, wires[1:]),
+        qml.SelectPauliRot(
+            -2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
+        ), # pylint: disable=no-member
+        *other_ops_u_sub,
+    ]
+
+def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashable]=None) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
 
     Args:
         u (np.ndarray): Unitary matrix to be decomposed.
         wires (qml.wires.WireLike): Wires on which the operators in the decomposition should act.
+        zeroed_wire (Hashable): Input wire that is guaranteed to be in the state :math:`|0\rangle`.
+            By default, no wire comes with this assumption/guarantee.
 
     Returns:
         Sequence[qml.operation.Operator]: Operators in the rotation-angle-optimal decomposition.
@@ -34,12 +60,28 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
 
     Uses the RotOptSynth validation toggle.
     """
+    if zeroed_wire is not None:
+        if zeroed_wire not in wires:
+            raise ValueError(
+                "A provided zeroed_wire must be part of the provided wires. "
+                f"Got {zeroed_wire=} and {wires=}"
+            )
+        zeroed_idx = list(wires).index(zeroed_wire)
+        if zeroed_idx != 0:
+            new_wires = [zeroed_wire] + wires[:zeroed_idx] + wires[zeroed_idx+1:]
+            u = qml.math.expand_matrix(u, wires=wires, wire_order=new_wires)
+            return rot_opt_synth(u, wires=new_wires, zeroed_wire=zeroed_wire)
+        first_wire_zeroed = True
+    else:
+        first_wire_zeroed = False
+
     num_wires = len(wires)
     assert len(u) == 2**num_wires
     if validation_enabled():
         assert is_unitary(u)
 
     if num_wires == 2:
+        # todo: Work in first_wire_zeroed case
         with qml.queuing.AnnotatedQueue() as q:
             u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
             global_phase += _decompose_3_cnots(u, wires, global_phase)
@@ -64,17 +106,10 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
         k10 = sub_diag[:, None] * k10
         k11 = sub_diag[:, None] * k11
 
-        u_sub, d_sub, v_sub = _compute_udv(k10, k11)
-        diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
-        v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
+        ops_from_first_mplx = _decompose_first_mplx(k10, k11, wires, first_wire_zeroed)
 
         new_ops = [
-            *rot_opt_synth(v_sub, wires[1:]),
-            # pylint: disable=no-member
-            qml.SelectPauliRot(
-                -2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
-            ),
-            *other_ops_u_sub,
+            *ops_from_first_mplx,
             qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
             qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
             *attach_multiplexer_node(other_ops_00, other_ops_01, wires[0]),
@@ -83,13 +118,15 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
     if validation_enabled():
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
-        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, k10)
-        assert np.allclose(
-            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, k11
-        )
 
         u_rec = ops_to_mat(new_ops, wires)
-        assert np.allclose(u, u_rec, atol=1e-7)
+        if first_wire_zeroed:
+            u_rec_sub = np.take(np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires), 0, 0)
+            u_sub = np.take(np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires), 0, 0)
+            assert np.allclose(u_sub, u_rec_sub, atol=1e-7)
+
+        else:
+            assert np.allclose(u, u_rec, atol=1e-7)
 
     if qml.QueuingManager.recording():
         for op in new_ops:

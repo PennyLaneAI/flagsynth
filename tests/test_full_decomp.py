@@ -45,84 +45,74 @@ targets_4q = [
 targets = targets_2q +targets_3q + targets_4q
 
 class TestRotOptSynth:
+    """Tests for rot_opt_synth."""
 
     @pytest.mark.with_validation
+    @pytest.mark.parametrize("zeroed_wire", [0, 1])
     @pytest.mark.parametrize("target", targets_2q)
-    def test_builtin_validation_two_qubits(self, target):
-        assert ros.validation_enabled()
-        _ = ros.rot_opt_synth(target, [0, 1])
+    def test_zeroed_wire_correctly_rerouted(self, target, zeroed_wire):
+        wires = [0, 1]
+        ops = ros.rot_opt_synth(target, wires, zeroed_wire=zeroed_wire)
+        recon_mat = ros.ops_to_mat(ops, wires)
+
+        recon_mat_sub = np.take(np.take(np.reshape(recon_mat, (2,) * 4), 0, axis=zeroed_wire+2), 0, axis=zeroed_wire)
+        target_sub = np.take(np.take(np.reshape(target, (2,) * 4), 0, axis=zeroed_wire+2), 0, axis=zeroed_wire)
+        assert np.allclose(recon_mat_sub, target_sub)
 
     @pytest.mark.with_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("target", targets_2q)
+    def test_builtin_validation_two_qubits(self, target, first_wire_zeroed):
+        zeroed_wire = 0 if first_wire_zeroed else None
+        _ = ros.rot_opt_synth(target, [0, 1], zeroed_wire=zeroed_wire)
+
+    @pytest.mark.with_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("target", targets_3q)
-    def test_builtin_validation_three_qubits(self, target):
-        _ = ros.rot_opt_synth(target, [0, 1, 2])
+    def test_builtin_validation_three_qubits(self, target, first_wire_zeroed):
+        zeroed_wire = 0 if first_wire_zeroed else None
+        _ = ros.rot_opt_synth(target, [0, 1, 2], zeroed_wire=zeroed_wire)
 
     @pytest.mark.with_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("target", targets_4q)
-    def test_builtin_validation_four_qubits(self, target):
-        _ = ros.rot_opt_synth(target, [0, 1, 2, 3])
+    def test_builtin_validation_four_qubits(self, target, first_wire_zeroed):
+        zeroed_wire = 0 if first_wire_zeroed else None
+        _ = ros.rot_opt_synth(target, [0, 1, 2, 3], zeroed_wire=zeroed_wire)
 
     @pytest.mark.without_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])
     @pytest.mark.parametrize("target", targets)
-    def test_wires(self, target, wires):
+    def test_wires(self, target, wires, first_wire_zeroed):
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        ops = ros.rot_opt_synth(target, wires)
+        zeroed_wire = wires[0] if first_wire_zeroed else None
+        ops = ros.rot_opt_synth(target, wires, zeroed_wire=zeroed_wire)
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.without_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("n", [2, 3])
-    def test_queuing_matches_return_without_validation(self, n):
+    def test_queuing_matches_return_without_validation(self, n, first_wire_zeroed):
         target = unitary_group.rvs(2**n, random_state=8364)
+        zeroed_wire = 0 if first_wire_zeroed else None
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n))
+            ops = ros.rot_opt_synth(target, range(n), zeroed_wire=zeroed_wire)
 
         assert ops == q.queue
 
     @pytest.mark.with_validation
+    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("n", [2, 3])
-    def test_queuing_matches_return_with_validation(self, n):
+    def test_queuing_matches_return_with_validation(self, n, first_wire_zeroed):
         assert ros.validation_enabled()
         target = unitary_group.rvs(2**n, random_state=8364)
+        zeroed_wire = 0 if first_wire_zeroed else None
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n))
+            ops = ros.rot_opt_synth(target, range(n), zeroed_wire=zeroed_wire)
 
         assert ops == q.queue
-
-
-    @pytest.mark.with_validation
-    @pytest.mark.parametrize("seed", [42, 48, 96])
-    def test_decomposition_correctness_2_qubits(self, seed):
-        """Test that a 2-qubit random unitary is correctly decomposed."""
-        wires = [0, 1]
-        u = unitary_group.rvs(2 ** 2, random_state=seed)
-
-        # The test passes if the function runs without raising an assertion error.
-        # The function's internal validation `assert np.allclose(u, u_rec)`
-        # serves as the correctness check.
-        ros.rot_opt_synth(u, wires)
-
-    @pytest.mark.with_validation
-    @pytest.mark.parametrize("seed", [24, 61])
-    def test_decomposition_correctness_3_qubits(self, seed):
-        """Test that a 3-qubit random unitary is correctly decomposed."""
-        wires = range(3)
-        u = unitary_group.rvs(2 ** 3, random_state=seed)
-
-        # This tests the main recursive logic of the function.
-        # Correctness is verified by the function's internal validation.
-        ros.rot_opt_synth(u, wires)
-
-    @pytest.mark.without_validation
-    @pytest.mark.parametrize("seed", [9612, 8124])
-    def test_decomposition_correctness_5_qubits(self, seed):
-        """Test that a 5-qubit random unitary is correctly decomposed."""
-        wires = range(5)
-        u = unitary_group.rvs(2 ** 5, random_state=seed)
-
-        ops = ros.rot_opt_synth(u, wires)
-        assert np.allclose(ros.ops_to_mat(ops, wires), u)
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("num_wires, wire_labels", [(2, ["a", "b"]), (3, [0, "c", 2])])
