@@ -49,6 +49,7 @@ class TestRotOptSynth:
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target):
+        assert ros.validation_enabled()
         _ = ros.rot_opt_synth(target, [0, 1])
 
     @pytest.mark.with_validation
@@ -71,22 +72,24 @@ class TestRotOptSynth:
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("n", [2, 3, 4, 5])
-    def queuing_matches_return(self, n):
+    @pytest.mark.parametrize("n", [2, 3])
+    def test_queuing_matches_return_without_validation(self, n):
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
             ops = ros.rot_opt_synth(target, range(n))
 
         assert ops == q.queue
 
+    @pytest.mark.with_validation
+    @pytest.mark.parametrize("n", [2, 3])
+    def test_queuing_matches_return_with_validation(self, n):
+        assert ros.validation_enabled()
+        target = unitary_group.rvs(2**n, random_state=8364)
+        with qml.queuing.AnnotatedQueue() as q:
+            ops = ros.rot_opt_synth(target, range(n))
 
+        assert ops == q.queue
 
-# Note: The test functions rely on the validation asserts inside rot_opt_synth itself
-# to verify correctness. The primary test is that the function executes without error
-# when validation is enabled, which means its internal reconstruction of the unitary passed.
-
-class TestRotOptSynth:
-    """Tests for the rot_opt_synth unitary synthesis function."""
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("seed", [42, 48, 96])
@@ -133,16 +136,6 @@ class TestRotOptSynth:
         """Test that the Toffoli gate is decomposed correctly."""
         toffoli = qml.Toffoli([0, 1, 2]).matrix()
         ros.rot_opt_synth(toffoli, wires=[0, 1, 2])
-
-    @pytest.mark.with_validation
-    def test_queuing_behavior(self):
-        """Test that the decomposition is correctly queued inside a tape."""
-        u = unitary_group.rvs(8, random_state=10)
-        wires = [0, 1, 2]
-
-        with qml.queuing.AnnotatedQueue() as q:
-            ops_list = ros.rot_opt_synth(u, wires)
-        assert ops_list == q.queue
 
 
 @pytest.mark.with_validation

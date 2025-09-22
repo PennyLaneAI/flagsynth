@@ -232,17 +232,23 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
         K2_1_diag_op, K2_1_ops = sub_decomp(np.diag(smaller_diag) @ K2[p:, p:], wires=wires[1:])
         multiplexer_angles_A = -2 * np.arctan2(np.diag(A, k=p), np.diag(A)[:p])
 
-    diagonal = np.concatenate([K2_0_diag_op.data[0], K2_1_diag_op.data[0]])
-    diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
-    other_ops = [
-        *attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
-        qml.SelectPauliRot(multiplexer_angles_A, wires[1:], target_wire=wires[0], rot_axis="Y"),
-        qml.SelectPauliRot(multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"),
-        *attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
-    ]
-    if validation_enabled():
-        u_rec = ops_to_mat([diag_op] + other_ops, wires)
-        assert np.allclose(
-            u, u_rec, atol=1e-7
-        ), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
+        diagonal = np.concatenate([K2_0_diag_op.data[0], K2_1_diag_op.data[0]])
+        diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
+        other_ops = [
+            *attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
+            qml.SelectPauliRot(multiplexer_angles_A, wires[1:], target_wire=wires[0], rot_axis="Y"),
+            qml.SelectPauliRot(multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"),
+            *attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
+        ]
+        if validation_enabled():
+            u_rec = ops_to_mat([diag_op] + other_ops, wires)
+            assert np.allclose(
+                u, u_rec, atol=1e-7
+            ), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
+
+    if qml.QueuingManager.recording():
+        qml.apply(diag_op)
+        for op in other_ops:
+            qml.apply(op)
+
     return diag_op, other_ops

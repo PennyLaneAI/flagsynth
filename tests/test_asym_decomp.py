@@ -86,3 +86,13 @@ class TestAsymmetricTwoQubitDecomp:
             ops = ros.asymmetric_two_qubit_decomp(target, range(n))
 
         assert ops == q.queue
+
+    @pytest.mark.with_validation
+    @pytest.mark.parametrize("n", [2, 3, 4, 5])
+    def queuing_matches_return_with_validation(self, n):
+        assert not ros.validation_enabled()
+        target = unitary_group.rvs(2**n, random_state=8152)
+        with qml.queuing.AnnotatedQueue() as q:
+            ops = ros.asymmetric_two_qubit_decomp(target, range(n))
+
+        assert ops == q.queue

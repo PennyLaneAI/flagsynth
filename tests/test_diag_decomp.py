@@ -17,10 +17,10 @@ test_data_static = [
     (qml.CZ, [0, 1]),
 ]
 
-@pytest.mark.without_validation
 class TestAttachMultiplexerNode:
     """Tests for the attach_multiplexer_node function."""
 
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("rot_gate, axis", test_data_rotations)
     def test_single_rotation_gates(self, rot_gate, axis):
         """Test multiplexing of single rotation gates (RX, RY, RZ)."""
@@ -38,6 +38,7 @@ class TestAttachMultiplexerNode:
         assert new_op.hyperparameters["rot_axis"] == axis
         np.testing.assert_allclose(new_op.parameters[0], [0.6, -0.1])
 
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("static_gate, wires", test_data_static)
     def test_static_gates(self, static_gate, wires):
         """Test multiplexing of static gates (CNOT, CZ)."""
@@ -54,6 +55,7 @@ class TestAttachMultiplexerNode:
         # The multiplexer wire should NOT be added for static gates
         assert new_op.wires == qml.wires.Wires(wires)
 
+    @pytest.mark.without_validation
     def test_select_pauli_rot_gate(self):
         """Test multiplexing of existing SelectPauliRot gates."""
         ops0 = [qml.SelectPauliRot([0.6, 0.7], control_wires=[0], target_wire="target", rot_axis="X")]
@@ -70,6 +72,7 @@ class TestAttachMultiplexerNode:
         assert new_op.hyperparameters["rot_axis"] == "X"
         np.testing.assert_allclose(new_op.parameters[0], [0.6, 0.7, 0.2, -0.5])
 
+    @pytest.mark.without_validation
     def test_mixed_operations_list(self):
         """Test a list containing a mix of supported operations."""
         ops0 = [qml.RX(0.5, 0), qml.CNOT([0, 1]), qml.RY(1.2, 1)]
@@ -94,7 +97,21 @@ class TestAttachMultiplexerNode:
         assert result[2].wires == qml.wires.Wires([2, 1])
         np.testing.assert_allclose(result[2].parameters[0], [1.2, -0.4])
 
-    def test_queuing_behavior(self):
+    @pytest.mark.without_validation
+    def test_queuing_behavior_without_validation(self):
+        """Test that operations are correctly queued within a queuing context."""
+        ops0 = [qml.RZ(0.8, "a"), qml.CNOT(["a", "b"])]
+        ops1 = [qml.RZ(-0.8, "a"), qml.CNOT(["a", "b"])]
+        mpx_wire = "c"
+
+        with qml.queuing.AnnotatedQueue() as q:
+            returned = ros.attach_multiplexer_node(ops0, ops1, mpx_wire)
+
+        assert len(q.queue) == 2
+        assert q.queue == returned
+
+    @pytest.mark.with_validation
+    def test_queuing_behavior_with_validation(self):
         """Test that operations are correctly queued within a queuing context."""
         ops0 = [qml.RZ(0.8, "a"), qml.CNOT(["a", "b"])]
         ops1 = [qml.RZ(-0.8, "a"), qml.CNOT(["a", "b"])]
@@ -176,7 +193,15 @@ class TestDiagDecompTwoQubits:
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
 
     @pytest.mark.without_validation
-    def queuing_matches_return(self):
+    def test_queuing_matches_return_without_validation(self):
+        target = unitary_group.rvs(4, random_state=8364)
+        with qml.queuing.AnnotatedQueue() as q:
+            diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
+
+        assert [diag_op] + other_ops == q.queue
+
+    @pytest.mark.with_validation
+    def test_queuing_matches_return_with_validation(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
             diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
@@ -246,7 +271,16 @@ class TestDiagDecomp:
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("n", [2, 3, 4, 5])
-    def queuing_matches_return(self, n):
+    def test_queuing_matches_return_without_validation(self, n):
+        target = unitary_group.rvs(2**n, random_state=8364)
+        with qml.queuing.AnnotatedQueue() as q:
+            diag_op, other_ops = ros.diag_decomp(target, range(n))
+
+        assert [diag_op] + other_ops == q.queue
+
+    @pytest.mark.with_validation
+    @pytest.mark.parametrize("n", [2, 3, 4, 5])
+    def test_queuing_matches_return_with_validation(self, n):
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
             diag_op, other_ops = ros.diag_decomp(target, range(n))
