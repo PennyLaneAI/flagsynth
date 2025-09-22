@@ -7,7 +7,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import _cossin_
 
 
 
-def rot_opt_decomp(u, wires):
+def rot_opt_synth(u, wires):
     num_wires = len(wires)
     if validation_enabled():
         assert len(u) == 2**num_wires
@@ -42,13 +42,14 @@ def rot_opt_decomp(u, wires):
         v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
 
     new_ops = [
-        *rot_opt_decomp(v_sub, wires[1:]),
+        *rot_opt_synth(v_sub, wires[1:]),
         qml.SelectPauliRot(-2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
         *other_ops_u_sub,
         qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
         qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
         *attach_multiplexer_node(other_ops_00, other_ops_01, wires[0]),
     ]
+
     if validation_enabled():
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])

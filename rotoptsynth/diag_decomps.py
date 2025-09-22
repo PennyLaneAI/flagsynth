@@ -73,7 +73,10 @@ def attach_multiplexer_node(ops0, ops1, multiplexer_wire):
                 rot_axis=op0.hyperparameters["rot_axis"],
             ))
         else:
-            raise NotImplementedError(f"attaching multiplexer node to op of type {type(op0)} ({op0}).")
+            raise NotImplementedError(
+                f"attaching multiplexer node to op of type {type(op0)} ({op0}) is not supported."
+            )
+
     return new_ops
 
 def diag_decomp(u, wires):
