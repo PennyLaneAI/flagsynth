@@ -69,6 +69,7 @@ class TestAsymmetricTwoQubitDecomp:
         ops = ros.asymmetric_two_qubit_decomp(target, [0, 1])
         assert len(ops) == 11
         assert sum(isinstance(op, qml.CNOT) for op in ops) == 3
+        assert ros.count_rotation_angles(ops) == 16
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])

@@ -183,6 +183,7 @@ class TestDiagDecompTwoQubits:
         diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 14 # 2 CNOTs + 12 parametrized rotations
+        assert ros.count_rotation_angles([diag_op]+other_ops) == 16
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
