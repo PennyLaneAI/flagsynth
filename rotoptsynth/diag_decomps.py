@@ -186,7 +186,7 @@ def split_diagonal(diag: np.ndarray) -> tuple[np.ndarray]:
     split = len(diag) // 2
     diff = angles[..., split:] - angles[..., :split]
     mean = (angles[..., :split] + angles[..., split:]) / 2
-    return [np.exp(1j * mean), diff]
+    return np.exp(1j * mean), diff
 
 
 def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
