@@ -11,8 +11,13 @@ import pennylane as qml
 from pennylane.math.decomposition import su2su2_to_tensor_products
 
 from .utils import ops_to_mat
-from .validation import (has_unit_determinant, is_orthogonal, is_symmetric,
-                         is_unitary, validation_enabled)
+from .validation import (
+    has_unit_determinant,
+    is_orthogonal,
+    is_symmetric,
+    is_unitary,
+    validation_enabled,
+)
 
 # Matrices and matrix functions
 
