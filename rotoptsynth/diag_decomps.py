@@ -237,7 +237,9 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
         other_ops = [
             *attach_multiplexer_node(K2_0_ops, K2_1_ops, multiplexer_wire=wires[0]),
             qml.SelectPauliRot(multiplexer_angles_A, wires[1:], target_wire=wires[0], rot_axis="Y"),
-            qml.SelectPauliRot(multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"),
+            qml.SelectPauliRot(
+                multiplexer_angles_K1, wires[1:], target_wire=wires[0], rot_axis="Z"
+            ),
             *attach_multiplexer_node(K1_0_ops, K1_1_ops, multiplexer_wire=wires[0]),
         ]
         if validation_enabled():
