@@ -43,6 +43,33 @@ def _decompose_first_mplx(a, b, wires, first_wire_zeroed):
         *other_ops_u_sub,
     ]
 
+def _rot_opt_synth_two_qubits(u, wires):
+    with qml.queuing.AnnotatedQueue() as q:
+        u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
+        global_phase += _decompose_3_cnots(u, wires, global_phase)
+        qml.GlobalPhase(-global_phase)
+    ops = q.queue
+    if qml.queuing.QueuingManager.recording():
+        for op in ops:
+            qml.apply(op)
+    return ops
+
+def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
+    raise NotImplementedError
+    # todo: Work in first_wire_zeroed case
+    u = qml.math.expand_matrix(u, wires=wires, wire_order=wires[::-1])
+    wires = wires[::-1]
+
+    with qml.queuing.AnnotatedQueue() as q:
+        u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
+        global_phase += _decompose_3_cnots(u, wires, global_phase)
+        qml.GlobalPhase(-global_phase)
+    ops = q.queue
+    if qml.queuing.QueuingManager.recording():
+        for op in ops:
+            qml.apply(op)
+    return ops
+
 def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashable]=None) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
 
@@ -61,12 +88,15 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
     Uses the RotOptSynth validation toggle.
     """
     if zeroed_wire is not None:
+        print(f"{zeroed_wire=}")
         if zeroed_wire not in wires:
             raise ValueError(
                 "A provided zeroed_wire must be part of the provided wires. "
                 f"Got {zeroed_wire=} and {wires=}"
             )
+        print(f"{wires=}")
         zeroed_idx = list(wires).index(zeroed_wire)
+        print(f"{zeroed_idx=}")
         if zeroed_idx != 0:
             new_wires = [zeroed_wire] + wires[:zeroed_idx] + wires[zeroed_idx+1:]
             u = qml.math.expand_matrix(u, wires=wires, wire_order=new_wires)
@@ -81,16 +111,9 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
         assert is_unitary(u)
 
     if num_wires == 2:
-        # todo: Work in first_wire_zeroed case
-        with qml.queuing.AnnotatedQueue() as q:
-            u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
-            global_phase += _decompose_3_cnots(u, wires, global_phase)
-            qml.GlobalPhase(-global_phase)
-        ops = q.queue
-        if qml.queuing.QueuingManager.recording():
-            for op in ops:
-                qml.apply(op)
-        return ops
+        if first_wire_zeroed:
+            return _rot_opt_synth_two_qubits_first_zeroed(u, wires)
+        return _rot_opt_synth_two_qubits(u, wires)
 
     p = len(u) // 2
     (k00, k01), mplx_angles_ry, (k10, k11) = _cossin_decomposition(u, p)
@@ -121,8 +144,8 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
 
         u_rec = ops_to_mat(new_ops, wires)
         if first_wire_zeroed:
-            u_rec_sub = np.take(np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires), 0, 0)
-            u_sub = np.take(np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires), 0, 0)
+            u_rec_sub = np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires)
+            u_sub = np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires)
             assert np.allclose(u_sub, u_rec_sub, atol=1e-7)
 
         else:

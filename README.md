@@ -1,7 +1,6 @@
 # Rot-Opt-Synth
 Unitary synthesis with the optimal number of rotation gates.
 
-- [ ] Global phase handling
 - [ ] todo's in code
 
 

@@ -44,41 +44,49 @@ targets_4q = [
 
 targets = targets_2q +targets_3q + targets_4q
 
+def _take_zeroed_submat(arr, n, zeroed_wire):
+    return np.take(np.reshape(arr, (2,) * (2 * n)), 0, axis=zeroed_wire+n)
+
 class TestRotOptSynth:
     """Tests for rot_opt_synth."""
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("zeroed_wire", [0, 1])
-    @pytest.mark.parametrize("target", targets_2q)
+    @pytest.mark.parametrize("zeroed_wire", [0, 1, 2])
+    @pytest.mark.parametrize("target", targets_3q)
     def test_zeroed_wire_correctly_rerouted(self, target, zeroed_wire):
-        wires = [0, 1]
+        wires = [0, 1, 2]
         ops = ros.rot_opt_synth(target, wires, zeroed_wire=zeroed_wire)
-        recon_mat = ros.ops_to_mat(ops, wires)
 
-        recon_mat_sub = np.take(np.take(np.reshape(recon_mat, (2,) * 4), 0, axis=zeroed_wire+2), 0, axis=zeroed_wire)
-        target_sub = np.take(np.take(np.reshape(target, (2,) * 4), 0, axis=zeroed_wire+2), 0, axis=zeroed_wire)
-        assert np.allclose(recon_mat_sub, target_sub)
+        recon_mat = ros.ops_to_mat(ops, wires)
+        assert np.allclose(
+            _take_zeroed_submat(recon_mat, 3, zeroed_wire),
+            _take_zeroed_submat(target, 3, zeroed_wire),
+            atol=1e-7,
+        )
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target, first_wire_zeroed):
         zeroed_wire = 0 if first_wire_zeroed else None
-        _ = ros.rot_opt_synth(target, [0, 1], zeroed_wire=zeroed_wire)
+        ops = ros.rot_opt_synth(target, [0, 1], zeroed_wire=zeroed_wire)
+        assert ros.count_rotation_angles(ops) == (12 if first_wire_zeroed else 16)
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target, first_wire_zeroed):
         zeroed_wire = 0 if first_wire_zeroed else None
-        _ = ros.rot_opt_synth(target, [0, 1, 2], zeroed_wire=zeroed_wire)
+        ops = ros.rot_opt_synth(target, [0, 1, 2], zeroed_wire=zeroed_wire)
+        assert ros.count_rotation_angles(ops) == (48 if first_wire_zeroed else 64)
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target, first_wire_zeroed):
         zeroed_wire = 0 if first_wire_zeroed else None
-        _ = ros.rot_opt_synth(target, [0, 1, 2, 3], zeroed_wire=zeroed_wire)
+        ops = ros.rot_opt_synth(target, [0, 1, 2, 3], zeroed_wire=zeroed_wire)
+        assert ros.count_rotation_angles(ops) == (192 if first_wire_zeroed else 256)
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("first_wire_zeroed", [False, True])
