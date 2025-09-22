@@ -1,19 +1,36 @@
+from collections.abc import Sequence
 import numpy as np
 import pennylane as qml
 from .diag_decomps import diag_decomp, attach_multiplexer_node, split_diagonal
 from .utils import ops_to_mat
 from .validation import validation_enabled, is_unitary
+from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions.unitary_decompositions import (
     _cossin_decomposition,
     _compute_udv,
     _decompose_3_cnots,
 )
+from pennylane.wires import WiresLike
 
 
-def rot_opt_synth(u, wires):
+def rot_opt_synth(u: np.ndarray, wires: WiresLike) -> Sequence[Operator]:
+    r"""Unitary synthesis with optimal number of rotation angles.
+
+    Args:
+        u (np.ndarray): Unitary matrix to be decomposed.
+        wires (qml.wires.WireLike): Wires on which the operators in the decomposition should act.
+
+    Returns:
+        Sequence[qml.operation.Operator]: Operators in the rotation-angle-optimal decomposition.
+
+    Queues:
+        The same operators as are returned.
+
+    Uses the RotOptSynth validation toggle.
+    """
     num_wires = len(wires)
+    assert len(u) == 2**num_wires
     if validation_enabled():
-        assert len(u) == 2**num_wires
         assert is_unitary(u)
 
     if num_wires == 2:

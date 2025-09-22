@@ -17,7 +17,7 @@ test_data_static = [
     (qml.CZ, [0, 1]),
 ]
 
-@pytest.mark.usefixtures("disable_validation")
+@pytest.mark.without_validation
 class TestAttachMultiplexerNode:
     """Tests for the attach_multiplexer_node function."""
 
@@ -106,7 +106,7 @@ class TestAttachMultiplexerNode:
         assert len(q.queue) == 2
         assert q.queue == returned
 
-@pytest.mark.usefixtures("enable_disable_validation")
+@pytest.mark.with_validation
 class TestAttachMultiplexerNodeErrors:
     """Error and validation tests for attach_multiplexer_node."""
 
@@ -160,14 +160,14 @@ targets_2q = [
 
 class TestDiagDecompTwoQubits:
 
-    @pytest.mark.usefixtures("enable_disable_validation")
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation(self, target):
         diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 14 # 2 CNOTs + 12 parametrized rotations
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
     @pytest.mark.parametrize("target", targets_2q)
     def test_wires(self, target, wires):
@@ -175,7 +175,7 @@ class TestDiagDecompTwoQubits:
         assert diag_op.wires == wires
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     def queuing_matches_return(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
@@ -213,28 +213,28 @@ targets = targets_2q +targets_3q + targets_4q
 
 class TestDiagDecomp:
 
-    @pytest.mark.usefixtures("enable_disable_validation")
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 14 # 2 CNOTs + 12 parametrized rotations
 
-    @pytest.mark.usefixtures("enable_disable_validation")
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 30 # 2 times two-qubit case + 2 multiplexers
 
-    @pytest.mark.usefixtures("enable_disable_validation")
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2, 3])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 62 # 2 times three-qubit case + 2 multiplexers
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])
     @pytest.mark.parametrize("target", targets)
     def test_wires(self, target, wires):
@@ -244,7 +244,7 @@ class TestDiagDecomp:
         assert diag_op.wires == wires
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("n", [2, 3, 4, 5])
     def queuing_matches_return(self, n):
         target = unitary_group.rvs(2**n, random_state=8364)

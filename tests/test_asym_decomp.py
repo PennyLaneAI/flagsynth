@@ -63,23 +63,21 @@ class TestTiny:
 class TestAsymmetricTwoQubitDecomp:
     """Tests for asymmetric_two_qubit_decomp."""
 
-    @pytest.mark.usefixtures("enable_disable_validation")
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets)
     def test_builtin_validation(self, target):
         ops = ros.asymmetric_two_qubit_decomp(target, [0, 1])
-        assert ros.validation_enabled()
         assert len(ops) == 11
         assert sum(isinstance(op, qml.CNOT) for op in ops) == 3
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
     @pytest.mark.parametrize("target", targets)
     def test_wires(self, target, wires):
-        assert not ros.validation_enabled()
         ops = ros.asymmetric_two_qubit_decomp(target, wires)
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
-    @pytest.mark.usefixtures("disable_validation")
+    @pytest.mark.without_validation
     @pytest.mark.parametrize("n", [2, 3, 4, 5])
     def queuing_matches_return(self, n):
         assert not ros.validation_enabled()
