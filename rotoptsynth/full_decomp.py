@@ -8,10 +8,7 @@ import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions.unitary_decompositions import (
-    _compute_udv,
-    _cossin_decomposition,
-    _decompose_3_cnots,
-)
+    _compute_udv, _cossin_decomposition, _decompose_3_cnots)
 from pennylane.wires import WiresLike
 
 from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
