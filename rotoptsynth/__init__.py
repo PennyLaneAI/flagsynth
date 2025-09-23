@@ -1,4 +1,6 @@
 """Python package for parameter-optimal unitary synthesis techniques."""
+import jax
+jax.config.update("jax_enable_x64", True)
 
 from .asym_decomp import asymmetric_two_qubit_decomp
 from .diag_decomps import attach_multiplexer_node, diag_decomp
