@@ -2,7 +2,7 @@
 called ``rot_opt_synth`` (at the moment)."""
 
 # pylint: disable=too-many-locals
-from collections.abc import Sequence, Hashable
+from collections.abc import Hashable, Sequence
 from typing import Optional
 
 import numpy as np
@@ -20,12 +20,13 @@ from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 
+
 def _decompose_first_mplx(a, b, wires, zeroed_wires):
     """Decompose the first multiplexer (in circuit ordering, not matrix multiplication ordering)
     of an AIII Cartan decomposition, using information about the first wire being zeroed or not."""
 
     if zeroed_wires:
-        assert wires[0] in zeroed_wires # Consistency check
+        assert wires[0] in zeroed_wires  # Consistency check
         new_zeroed_wires = [z for z in zeroed_wires if z != wires[0]]
         return rot_opt_synth(a, wires[1:], new_zeroed_wires)
 
@@ -42,9 +43,10 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
         *rot_opt_synth(v_sub, wires[1:]),
         qml.SelectPauliRot(
             -2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
-        ), # pylint: disable=no-member
+        ),  # pylint: disable=no-member
         *other_ops_u_sub,
     ]
+
 
 def _rot_opt_synth_one_qubit(u, wire, zeroed):
     with qml.QueuingManager.stop_recording():
@@ -56,6 +58,7 @@ def _rot_opt_synth_one_qubit(u, wire, zeroed):
         for op in new_ops:
             qml.apply(op)
     return new_ops
+
 
 def _rot_opt_synth_two_qubits(u, wires):
     with qml.queuing.AnnotatedQueue() as q:
@@ -87,7 +90,10 @@ def _validate_and_arrange_zeroed_wires(u: np.ndarray, wires: WiresLike, zeroed_w
 
     return u, new_wires
 
-def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike]=None) -> Sequence[Operator]:
+
+def rot_opt_synth(
+    u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike] = None
+) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
 
     Args:
@@ -148,8 +154,8 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
 
-        u_rec = ops_to_mat(new_ops, wires).reshape((2,) * (2*num_wires))
-        u = u.reshape((2,) * (2*num_wires))
+        u_rec = ops_to_mat(new_ops, wires).reshape((2,) * (2 * num_wires))
+        u = u.reshape((2,) * (2 * num_wires))
         for _ in zeroed_wires:
             u_rec = np.take(u_rec, 0, num_wires)
             u = np.take(u, 0, num_wires)

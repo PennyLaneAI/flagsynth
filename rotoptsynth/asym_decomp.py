@@ -24,8 +24,11 @@ from .validation import (
 _cnot = qml.CNOT([0, 1]).matrix()
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
+
 def _rz_1(theta):
-    return np.diag(np.exp([-0.5j * theta, 0.5j*theta, -0.5j*theta, 0.5j*theta]))
+    return np.diag(np.exp([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta]))
+
+
 """Matrix of an RZ gate acting on the second of two wires."""
 
 _yy = qml.matrix(qml.Y(0) @ qml.Y(1), wire_order=[0, 1])

@@ -4,6 +4,7 @@ cosine-sine-decompositions of matrices, and to count (non-)Clifford angles."""
 import numpy as np
 import pennylane as qml
 from scipy.linalg import cossin
+
 from .validation import has_unit_determinant
 
 
@@ -96,22 +97,21 @@ def count_clifford(theta, verbose=False, atol=1e-6):
 
     return (cliffs, non_cliffs, zeros)
 
+
 _counts = {
     qml.RX: 1,
     qml.RY: 1,
     qml.RZ: 1,
     qml.CNOT: 0,
     qml.CZ: 0,
-    qml.QubitUnitary: lambda op: 4**len(op.wires)-1, # assumes unit determinant
-    qml.SelectPauliRot: lambda op: 2**(len(op.wires)-1),
+    qml.QubitUnitary: lambda op: 4 ** len(op.wires) - 1,  # assumes unit determinant
+    qml.SelectPauliRot: lambda op: 2 ** (len(op.wires) - 1),
     qml.GlobalPhase: 1,
-    qml.DiagonalQubitUnitary: lambda op: 2**(len(op.wires)),
+    qml.DiagonalQubitUnitary: lambda op: 2 ** (len(op.wires)),
 }
 
 
 def count_rotation_angles(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""
     assert all(has_unit_determinant(op.data[0]) for op in ops if isinstance(op, qml.QubitUnitary))
-    return sum((entry(op) if callable(entry:=_counts[type(op)]) else entry) for op in ops)
-
-
+    return sum((entry(op) if callable(entry := _counts[type(op)]) else entry) for op in ops)
