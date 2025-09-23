@@ -15,7 +15,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import (
 )
 from pennylane.wires import WiresLike
 
-from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
+from .diag_decomps_jax import attach_multiplexer_node, diag_decomp, split_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 

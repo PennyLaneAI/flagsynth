@@ -173,8 +173,8 @@ def _prop_iv3(u, v):
     eigvals_u, a = jnp.linalg.eigh(pi_u)
     eigvals_v, b = jnp.linalg.eigh(pi_v)
     # Fix determinants
-    a[:, 0] *= jnp.linalg.det(a)
-    b[:, 0] *= jnp.linalg.det(b)
+    a = a.at[0].multiply(jnp.linalg.det(a))
+    b = b.at[0].multiply(jnp.linalg.det(b))
     c = new_v.conj().T @ b @ a.T @ new_u
 
     # Move the subgroup elements a @ b.T and c from the standard rep of SO(4)
