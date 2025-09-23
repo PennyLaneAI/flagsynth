@@ -71,9 +71,27 @@ def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
             qml.apply(op)
     return ops
 
-return _rot_opt_synth_two_qubits_all_zeroed(u, wires):
+def _rot_opt_synth_two_qubits_all_zeroed(u, wires):
     raise NotImplementedError
     # todo
+
+def _validate_and_arrange_zeroed_wires(u: np.ndarray, wires: WiresLike, zeroed_wires: WiresLike):
+    if not all(z in wires for z in zeroed_wires):
+        raise ValueError(
+            "All provided zeroed_wires must be part of the provided wires. "
+            f"Got {zeroed_wires=} and {wires=}"
+        )
+    wires_list = list(wires)
+    zeroed_ids = [wires_list.index(z) for z in zeroed_wires]
+    if sorted(zeroed_ids) != list(range(len(zeroed_wires))):
+        # zeroed_wires are not in the first positions. Permute matrix and wires to make change that
+        other_wires = [w for i, w in enumerate(wires) if i not in zeroed_ids]
+        new_wires = zeroed_wires + other_wires
+        u = qml.math.expand_matrix(u, wires=wires, wire_order=new_wires)
+    else:
+        new_wires = wires
+
+    return u, new_wires
 
 def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike]=None) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
@@ -98,20 +116,7 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
     elif not isinstance(zeroed_wires, list):
         zeroed_wires = list(zeroed_wires)
 
-    if zeroed_wires:
-        if not all(z in wires for z in zeroed_wires):
-            raise ValueError(
-                "All provided zeroed_wires must be part of the provided wires. "
-                f"Got {zeroed_wires=} and {wires=}"
-            )
-        wires_list = list(wires)
-        zeroed_ids = [wires_list.index(z) for z in zeroed_wires]
-        if sorted(zeroed_ids) != list(range(len(zeroed_wires))):
-            other_wires = [w for i, w in enumerate(wires) if i not in zeroed_ids]
-            new_wires = zeroed_wires + other_wires
-            u = qml.math.expand_matrix(u, wires=wires, wire_order=new_wires)
-            return rot_opt_synth(u, wires=new_wires, zeroed_wires=zeroed_wires)
-    else:
+    u, wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
     num_wires = len(wires)
     assert len(u) == 2**num_wires
@@ -150,10 +155,11 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
         assert np.allclose(sub_diag * np.exp(-0.5j * mplx_angles_rz), diag_k00.data[0])
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
 
-        u_rec = ops_to_mat(new_ops, wires)
+        u_rec = ops_to_mat(new_ops, wires).reshape((2,) * (2*num_wires))
+        u = u.reshape((2,) * (2*num_wires))
         for _ in zeroed_wires:
-            u_rec = np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires)
-            u= np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires)
+            u_rec = np.take(u_rec, 0, num_wires)
+            u = np.take(u, 0, num_wires)
         assert np.allclose(u, u_rec, atol=1e-7)
 
     if qml.QueuingManager.recording():

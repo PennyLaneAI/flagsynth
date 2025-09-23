@@ -3,6 +3,98 @@ import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 import rotoptsynth as ros
+from rotoptsynth.full_decomp import _validate_and_arrange_zeroed_wires
+
+class TestValidateAndArrangeZeroedWires:
+    """Tests for _validate_and_arrange_zeroed_wires."""
+
+    def _assert_unitary_equivalency(self, u_orig, wires_orig, u_new, wires_new):
+        """
+        Helper to assert that two unitaries are physically equivalent even if the
+        matrix and wire orders are different.
+        """
+        # The matrix of the original op must equal the matrix of the new op
+        wire_order = wires_orig
+        original_matrix = qml.matrix(qml.QubitUnitary(u_orig, wires=wires_orig), wire_order=wire_order)
+        reordered_matrix = qml.matrix(qml.QubitUnitary(u_new, wires=wires_new), wire_order=wire_order)
+        assert np.allclose(original_matrix, reordered_matrix)
+
+    def test_no_reordering_needed(self):
+        """Test the case where zeroed_wires are already at the front."""
+        wires = ["a", "b", "c"]
+        zeroed_wires = ["a"]
+        u = np.arange(64).reshape(8, 8)
+
+        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+
+        assert np.array_equal(u, u_new) # Matrix should be unchanged
+        assert new_wires == wires       # Wires should be unchanged
+
+    def test_reordering_single_wire_from_end(self):
+        """Test reordering when a single zeroed_wire is at the end."""
+        wires = [0, 1, 2]
+        zeroed_wires = [2]
+        u = np.arange(64).reshape(8, 8)
+
+        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+
+        assert not np.array_equal(u, u_new)     # Matrix must have been permuted
+        assert new_wires == [2, 0, 1]           # Wires must be reordered
+        self._assert_unitary_equivalency(u, wires, u_new, new_wires)
+
+    def test_reordering_multiple_wires_mixed(self):
+        """Test reordering with multiple, out-of-order zeroed_wires."""
+        wires = ["w0", "w1", "w2", "w3"]
+        zeroed_wires = ["w2", "w0"]
+        u = np.arange(256).reshape(16, 16)
+
+        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+
+        assert not np.array_equal(u, u_new)
+        # The new order should be [zeroed_wires..., other_wires...], with others in original relative order
+        assert new_wires == ["w2", "w0", "w1", "w3"]
+        self._assert_unitary_equivalency(u, wires, u_new, new_wires)
+
+    def test_empty_zeroed_wires(self):
+        """Test that an empty zeroed_wires list is a valid no-op."""
+        wires = [0, 1]
+        zeroed_wires = []
+        u = np.arange(16).reshape(4, 4)
+
+        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+
+        assert np.array_equal(u, u_new)
+        assert new_wires == wires
+
+    def test_all_wires_are_zeroed(self):
+        """Test the case where all wires are specified as zeroed."""
+        wires = [0, 1]
+        zeroed_wires = [1, 0]
+        u = np.arange(16).reshape(4, 4)
+
+        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        assert np.array_equal(u, u_new)
+        assert new_wires == wires
+
+
+class TestValidateAndArrangeErrors:
+    """Tests for the validation and error-raising logic of the function."""
+
+    @pytest.mark.parametrize(
+        "wires, zeroed_wires",
+        [
+            ([0, 1], [2]),                  # Zeroed wire is completely outside
+            (["a", "b"], ["a", "c"]),       # One valid, one invalid zeroed wire
+            ([0, 1], ["a"]),                # Mismatched wire label types
+        ],
+    )
+    def test_error_zeroed_wire_not_in_wires(self, wires, zeroed_wires):
+        """Test that a ValueError is raised if a zeroed_wire is not in wires."""
+        u = np.eye(4)
+
+        # The match argument checks that the error message contains the expected text
+        with pytest.raises(ValueError, match="All provided zeroed_wires must be part of the "):
+            _ = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
 
 targets_2q = [
@@ -51,74 +143,58 @@ class TestRotOptSynth:
     """Tests for rot_opt_synth."""
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("zeroed_wire", [0, 1, 2])
-    @pytest.mark.parametrize("target", targets_3q)
-    def test_zeroed_wire_correctly_rerouted(self, target, zeroed_wire):
-        wires = [0, 1, 2]
-        ops = ros.rot_opt_synth(target, wires, zeroed_wire=zeroed_wire)
-
-        recon_mat = ros.ops_to_mat(ops, wires)
-        assert np.allclose(
-            _take_zeroed_submat(recon_mat, 3, zeroed_wire),
-            _take_zeroed_submat(target, 3, zeroed_wire),
-            atol=1e-7,
-        )
-
-    @pytest.mark.with_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 16), (1, 12), (2, 11)])
     @pytest.mark.parametrize("target", targets_2q)
-    def test_builtin_validation_two_qubits(self, target, first_wire_zeroed):
-        zeroed_wire = 0 if first_wire_zeroed else None
-        ops = ros.rot_opt_synth(target, [0, 1], zeroed_wire=zeroed_wire)
-        assert ros.count_rotation_angles(ops) == (12 if first_wire_zeroed else 16)
+    def test_builtin_validation_two_qubits(self, target, num_zeroed_wires, expected_count):
+        wires = list(range(2))
+        zeroed_wires = list(range(num_zeroed_wires))
+        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 64), (1, 48), (2, 44), (3, 43)])
     @pytest.mark.parametrize("target", targets_3q)
-    def test_builtin_validation_three_qubits(self, target, first_wire_zeroed):
-        zeroed_wire = 0 if first_wire_zeroed else None
-        ops = ros.rot_opt_synth(target, [0, 1, 2], zeroed_wire=zeroed_wire)
-        assert ros.count_rotation_angles(ops) == (48 if first_wire_zeroed else 64)
+    def test_builtin_validation_three_qubits(self, target, num_zeroed_wires, expected_count):
+        wires = list(range(3))
+        zeroed_wires = list(range(num_zeroed_wires))
+        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 256), (1, 192), (2, 176), (3, 172), (4, 171)])
     @pytest.mark.parametrize("target", targets_4q)
-    def test_builtin_validation_four_qubits(self, target, first_wire_zeroed):
-        zeroed_wire = 0 if first_wire_zeroed else None
-        ops = ros.rot_opt_synth(target, [0, 1, 2, 3], zeroed_wire=zeroed_wire)
-        assert ros.count_rotation_angles(ops) == (192 if first_wire_zeroed else 256)
+    def test_builtin_validation_four_qubits(self, target, num_zeroed_wires, expected_count):
+        wires = list(range(4))
+        zeroed_wires = list(range(num_zeroed_wires))
+        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])
     @pytest.mark.parametrize("target", targets)
-    def test_wires(self, target, wires, first_wire_zeroed):
+    def test_wires(self, target, wires):
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        zeroed_wire = wires[0] if first_wire_zeroed else None
-        ops = ros.rot_opt_synth(target, wires, zeroed_wire=zeroed_wire)
+        ops = ros.rot_opt_synth(target, wires)
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("zeroed_wires", [[], [1], [1, 0]])
     @pytest.mark.parametrize("n", [2, 3])
-    def test_queuing_matches_return_without_validation(self, n, first_wire_zeroed):
+    def test_queuing_matches_return_without_validation(self, n, zeroed_wires):
         target = unitary_group.rvs(2**n, random_state=8364)
-        zeroed_wire = 0 if first_wire_zeroed else None
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n), zeroed_wire=zeroed_wire)
+            ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
 
         assert ops == q.queue
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("first_wire_zeroed", [False, True])
+    @pytest.mark.parametrize("zeroed_wires", [[], [1], [1, 0]])
     @pytest.mark.parametrize("n", [2, 3])
-    def test_queuing_matches_return_with_validation(self, n, first_wire_zeroed):
-        assert ros.validation_enabled()
+    def test_queuing_matches_return_with_validation(self, n, zeroed_wires):
         target = unitary_group.rvs(2**n, random_state=8364)
-        zeroed_wire = 0 if first_wire_zeroed else None
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n), zeroed_wire=zeroed_wire)
+            ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
 
         assert ops == q.queue
 
