@@ -2,7 +2,7 @@
 called ``rot_opt_synth`` (at the moment)."""
 
 # pylint: disable=too-many-locals
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 from typing import Optional
 
 import numpy as np
@@ -41,9 +41,7 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
         )
     return [
         *rot_opt_synth(v_sub, wires[1:]),
-        qml.SelectPauliRot(
-            -2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
-        ),  # pylint: disable=no-member
+        qml.SelectPauliRot(-2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
         *other_ops_u_sub,
     ]
 
@@ -99,9 +97,9 @@ def rot_opt_synth(
     Args:
         u (np.ndarray): Unitary matrix to be decomposed.
         wires (qml.wires.WireLike): Wires on which the operators in the decomposition should act.
-        zeroed_wires (qml.wires.WiresLike): Wires that are guaranteed to be in the state :math:`|0\rangle`.
-            By default, no wires come with this assumption/guarantee. Must be contained
-            in ``wires``.
+        zeroed_wires (qml.wires.WiresLike): Wires that are guaranteed to be in the
+            state :math:`|0\rangle`. By default, no wires come with this assumption/guarantee.
+            Must be contained in ``wires``.
 
     Returns:
         Sequence[qml.operation.Operator]: Operators in the rotation-angle-optimal decomposition.
@@ -126,7 +124,7 @@ def rot_opt_synth(
     if num_wires == 1:
         return _rot_opt_synth_one_qubit(u, wires[0], zeroed=bool(zeroed_wires))
 
-    elif num_wires == 2 and len(zeroed_wires) == 0:
+    if num_wires == 2 and len(zeroed_wires) == 0:
         return _rot_opt_synth_two_qubits(u, wires)
 
     p = len(u) // 2
