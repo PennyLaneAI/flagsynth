@@ -56,10 +56,6 @@ def _rot_opt_synth_two_qubits(u, wires):
     return ops
 
 def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
-    raise NotImplementedError
-    # todo
-    u = qml.math.expand_matrix(u, wires=wires, wire_order=wires[::-1])
-    wires = wires[::-1]
 
     with qml.queuing.AnnotatedQueue() as q:
         u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
@@ -123,10 +119,13 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
     if validation_enabled():
         assert is_unitary(u)
 
-    if num_wires == 2:
-        if len(zeroed_wires) == 1:
-            return _rot_opt_synth_two_qubits_first_zeroed(u, wires)
-        elif len(zeroed_wires) == 2:
+    if num_wires == 1:
+        raise NotImplementedError("rot_opt_synth can't handle single wire targets yet")
+
+    elif num_wires == 2:
+        #if len(zeroed_wires) == 1:
+            #return _rot_opt_synth_two_qubits_first_zeroed(u, wires)
+        if len(zeroed_wires) == 2:
             return _rot_opt_synth_two_qubits_all_zeroed(u, wires)
         return _rot_opt_synth_two_qubits(u, wires)
 

@@ -20,6 +20,35 @@ from .validation import is_block_diagonal, is_unitary, validation_enabled
 _cnot = qml.CNOT([0, 1]).matrix()
 
 
+def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, list[Operator]]:
+    """Compute the decomposition of a single-qubit unitary into a diagonal and a remaining
+    decomposition:
+
+    ```
+    0: ─Diag──RY──RZ─┤
+    ```
+
+    This decomposition is trivially derived from a ZYZ decomposition, but it is adjusted to the
+    syntax of ``diag_decomp``.
+
+    Args:
+        u (np.ndarray): Unitary matrix to be decomposed.
+        wire (Hashable): Wire on which the operators in the decomposition should act.
+
+    Returns:
+        tuple[qml.operation.Operator, list[qml.operation.Operator]]: Diagonal operator
+        (of type ``DiagonalQubitUnitary``) and list of other operators. The decomposition
+        is provided in the circuit decomposition order, the inverse of the matrix multiplication
+        order.
+
+    Queues:
+        The same operators as are returned.
+
+    Uses the RotOptSynth validation toggle.
+    """
+    rz0, ry, rz1, gphase = one_qubit_decomposition(u, wire=wire, return_global_phase=True)
+
+
 def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of a two-qubit unitary into a diagonal and a remaining
     decomposition:
