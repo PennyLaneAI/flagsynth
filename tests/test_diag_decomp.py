@@ -17,6 +17,7 @@ test_data_static = [
     (qml.CZ, [0, 1]),
 ]
 
+
 class TestAttachMultiplexerNode:
     """Tests for the attach_multiplexer_node function."""
 
@@ -58,8 +59,12 @@ class TestAttachMultiplexerNode:
     @pytest.mark.without_validation
     def test_select_pauli_rot_gate(self):
         """Test multiplexing of existing SelectPauliRot gates."""
-        ops0 = [qml.SelectPauliRot([0.6, 0.7], control_wires=[0], target_wire="target", rot_axis="X")]
-        ops1 = [qml.SelectPauliRot([0.2, -0.5], control_wires=[0], target_wire="target", rot_axis="X")]
+        ops0 = [
+            qml.SelectPauliRot([0.6, 0.7], control_wires=[0], target_wire="target", rot_axis="X")
+        ]
+        ops1 = [
+            qml.SelectPauliRot([0.2, -0.5], control_wires=[0], target_wire="target", rot_axis="X")
+        ]
         mpx_wire = "new_mpx"
 
         result = ros.attach_multiplexer_node(ops0, ops1, mpx_wire)
@@ -123,6 +128,7 @@ class TestAttachMultiplexerNode:
         assert len(q.queue) == 2
         assert q.queue == returned
 
+
 @pytest.mark.with_validation
 class TestAttachMultiplexerNodeErrors:
     """Error and validation tests for attach_multiplexer_node."""
@@ -145,23 +151,24 @@ class TestAttachMultiplexerNodeErrors:
     def test_different_op_types_raises_error(self):
         """Test that mismatched op types raise AssertionError if validation is on."""
         ops0 = [qml.RX(0.5, 0)]
-        ops1 = [qml.RY(0.5, 0)] # Mismatched type
+        ops1 = [qml.RY(0.5, 0)]  # Mismatched type
         with pytest.raises(AssertionError):
             ros.attach_multiplexer_node(ops0, ops1, "mpx")
 
     def test_different_wires_raises_error(self):
         """Test that mismatched wires raise AssertionError if validation is on."""
         ops0 = [qml.CNOT([0, 1])]
-        ops1 = [qml.CNOT([0, 2])] # Mismatched wires
+        ops1 = [qml.CNOT([0, 2])]  # Mismatched wires
         with pytest.raises(AssertionError):
             ros.attach_multiplexer_node(ops0, ops1, "mpx")
 
     def test_different_rot_axis_raises_error(self):
         """Test mismatched rot_axis in SelectPauliRot raises AssertionError."""
         ops0 = [qml.SelectPauliRot([0.1, 0.6], [0], 1, rot_axis="X")]
-        ops1 = [qml.SelectPauliRot([0.2, -0.2], [0], 1, rot_axis="Y")] # Mismatched axis
+        ops1 = [qml.SelectPauliRot([0.2, -0.2], [0], 1, rot_axis="Y")]  # Mismatched axis
         with pytest.raises(AssertionError):
             ros.attach_multiplexer_node(ops0, ops1, "mpx")
+
 
 targets_2q = [
     np.eye(4),
@@ -182,8 +189,8 @@ class TestDiagDecompTwoQubits:
     def test_builtin_validation(self, target):
         diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 14 # 2 CNOTs + 12 parametrized rotations
-        assert ros.count_rotation_angles([diag_op]+other_ops) == 16
+        assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
+        assert ros.count_rotation_angles([diag_op] + other_ops) == 16
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
@@ -208,6 +215,7 @@ class TestDiagDecompTwoQubits:
             diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
 
         assert [diag_op] + other_ops == q.queue
+
 
 targets_3q = [
     np.eye(8),
@@ -235,7 +243,8 @@ targets_4q = [
     qml.MultiRZ(-0.7124, [3, 0, 1, 2]).matrix(),
 ]
 
-targets = targets_2q +targets_3q + targets_4q
+targets = targets_2q + targets_3q + targets_4q
+
 
 class TestDiagDecomp:
 
@@ -244,21 +253,21 @@ class TestDiagDecomp:
     def test_builtin_validation_two_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 14 # 2 CNOTs + 12 parametrized rotations
+        assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 30 # 2 times two-qubit case + 2 multiplexers
+        assert len(other_ops) == 30  # 2 times two-qubit case + 2 multiplexers
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target):
         diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2, 3])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 62 # 2 times three-qubit case + 2 multiplexers
+        assert len(other_ops) == 62  # 2 times three-qubit case + 2 multiplexers
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])
@@ -287,5 +296,3 @@ class TestDiagDecomp:
             diag_op, other_ops = ros.diag_decomp(target, range(n))
 
         assert [diag_op] + other_ops == q.queue
-
-

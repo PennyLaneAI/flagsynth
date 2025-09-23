@@ -18,7 +18,7 @@ class TestOpsToMat:
         ops = [qml.IsingXY(0.612, [0, 1]), qml.H(0)]
         mat_01 = ros.utils.ops_to_mat(ops, wire_order=[0, 1])
         mat_10 = ros.utils.ops_to_mat(ops, wire_order=[1, 0])
-        assert np.allclose(qml.math.expand_matrix(mat_01, wires=[0, 1], wire_order=[1,0]), mat_10)
+        assert np.allclose(qml.math.expand_matrix(mat_01, wires=[0, 1], wire_order=[1, 0]), mat_10)
 
 
 FIXED_COUNT_OPS = [
@@ -29,6 +29,7 @@ FIXED_COUNT_OPS = [
     (qml.CZ([0, 1]), 0),
     (qml.GlobalPhase(1.23), 1),
 ]
+
 
 def _make_special_unitary(dim, seed):
     U = unitary_group.rvs(dim, random_state=seed)
@@ -51,6 +52,7 @@ LAMBDA_COUNT_OPS = [
     (qml.DiagonalQubitUnitary([1, 1j, -1, -1j], wires=[0, 1]), 4),
 ]
 
+
 class TestCountRotationAngles:
     """Tests for the count_rotation_angles function."""
 
@@ -67,10 +69,10 @@ class TestCountRotationAngles:
     def test_mixed_operators_list(self):
         """Test a list containing a mix of different operators."""
         ops = [
-            qml.RX(0.5, 0),          # 1
-            qml.CNOT([0, 1]),        # 0
+            qml.RX(0.5, 0),  # 1
+            qml.CNOT([0, 1]),  # 0
             qml.QubitUnitary(_make_special_unitary(2, 1), 2),  # 3
-            qml.SelectPauliRot([0.1, 0.2], control_wires=[0], target_wire=1) # 2
+            qml.SelectPauliRot([0.1, 0.2], control_wires=[0], target_wire=1),  # 2
         ]
         # Expected total: 1 + 0 + 3 + 2 = 6
         assert ros.count_rotation_angles(ops) == 6

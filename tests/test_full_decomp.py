@@ -5,6 +5,7 @@ import pennylane as qml
 import rotoptsynth as ros
 from rotoptsynth.full_decomp import _validate_and_arrange_zeroed_wires
 
+
 class TestValidateAndArrangeZeroedWires:
     """Tests for _validate_and_arrange_zeroed_wires."""
 
@@ -15,8 +16,12 @@ class TestValidateAndArrangeZeroedWires:
         """
         # The matrix of the original op must equal the matrix of the new op
         wire_order = wires_orig
-        original_matrix = qml.matrix(qml.QubitUnitary(u_orig, wires=wires_orig), wire_order=wire_order)
-        reordered_matrix = qml.matrix(qml.QubitUnitary(u_new, wires=wires_new), wire_order=wire_order)
+        original_matrix = qml.matrix(
+            qml.QubitUnitary(u_orig, wires=wires_orig), wire_order=wire_order
+        )
+        reordered_matrix = qml.matrix(
+            qml.QubitUnitary(u_new, wires=wires_new), wire_order=wire_order
+        )
         assert np.allclose(original_matrix, reordered_matrix)
 
     def test_no_reordering_needed(self):
@@ -25,10 +30,10 @@ class TestValidateAndArrangeZeroedWires:
         zeroed_wires = ["a"]
         u = np.arange(64).reshape(8, 8)
 
-        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        u_new, new_wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
-        assert np.array_equal(u, u_new) # Matrix should be unchanged
-        assert new_wires == wires       # Wires should be unchanged
+        assert np.array_equal(u, u_new)  # Matrix should be unchanged
+        assert new_wires == wires  # Wires should be unchanged
 
     def test_reordering_single_wire_from_end(self):
         """Test reordering when a single zeroed_wire is at the end."""
@@ -36,10 +41,10 @@ class TestValidateAndArrangeZeroedWires:
         zeroed_wires = [2]
         u = np.arange(64).reshape(8, 8)
 
-        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        u_new, new_wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
-        assert not np.array_equal(u, u_new)     # Matrix must have been permuted
-        assert new_wires == [2, 0, 1]           # Wires must be reordered
+        assert not np.array_equal(u, u_new)  # Matrix must have been permuted
+        assert new_wires == [2, 0, 1]  # Wires must be reordered
         self._assert_unitary_equivalency(u, wires, u_new, new_wires)
 
     def test_reordering_multiple_wires_mixed(self):
@@ -48,7 +53,7 @@ class TestValidateAndArrangeZeroedWires:
         zeroed_wires = ["w2", "w0"]
         u = np.arange(256).reshape(16, 16)
 
-        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        u_new, new_wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
         assert not np.array_equal(u, u_new)
         # The new order should be [zeroed_wires..., other_wires...], with others in original relative order
@@ -61,7 +66,7 @@ class TestValidateAndArrangeZeroedWires:
         zeroed_wires = []
         u = np.arange(16).reshape(4, 4)
 
-        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        u_new, new_wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
         assert np.array_equal(u, u_new)
         assert new_wires == wires
@@ -72,7 +77,7 @@ class TestValidateAndArrangeZeroedWires:
         zeroed_wires = [1, 0]
         u = np.arange(16).reshape(4, 4)
 
-        u_new, new_wires= _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+        u_new, new_wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
         assert np.array_equal(u, u_new)
         assert new_wires == wires
 
@@ -83,9 +88,9 @@ class TestValidateAndArrangeErrors:
     @pytest.mark.parametrize(
         "wires, zeroed_wires",
         [
-            ([0, 1], [2]),                  # Zeroed wire is completely outside
-            (["a", "b"], ["a", "c"]),       # One valid, one invalid zeroed wire
-            ([0, 1], ["a"]),                # Mismatched wire label types
+            ([0, 1], [2]),  # Zeroed wire is completely outside
+            (["a", "b"], ["a", "c"]),  # One valid, one invalid zeroed wire
+            ([0, 1], ["a"]),  # Mismatched wire label types
         ],
     )
     def test_error_zeroed_wire_not_in_wires(self, wires, zeroed_wires):
@@ -145,10 +150,12 @@ targets_4q = [
     qml.MultiRZ(-0.7124, [3, 0, 1, 2]).matrix(),
 ]
 
-targets = targets_2q +targets_3q + targets_4q
+targets = targets_2q + targets_3q + targets_4q
+
 
 def _take_zeroed_submat(arr, n, zeroed_wire):
-    return np.take(np.reshape(arr, (2,) * (2 * n)), 0, axis=zeroed_wire+n)
+    return np.take(np.reshape(arr, (2,) * (2 * n)), 0, axis=zeroed_wire + n)
+
 
 class TestRotOptSynth:
     """Tests for rot_opt_synth."""
@@ -172,7 +179,9 @@ class TestRotOptSynth:
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 64), (1, 48), (2, 44), (3, 43)])
+    @pytest.mark.parametrize(
+        "num_zeroed_wires, expected_count", [(0, 64), (1, 48), (2, 44), (3, 43)]
+    )
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target, num_zeroed_wires, expected_count):
         wires = list(range(3))
@@ -181,7 +190,9 @@ class TestRotOptSynth:
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 256), (1, 192), (2, 176), (3, 172), (4, 171)])
+    @pytest.mark.parametrize(
+        "num_zeroed_wires, expected_count", [(0, 256), (1, 192), (2, 176), (3, 172), (4, 171)]
+    )
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target, num_zeroed_wires, expected_count):
         wires = list(range(4))
@@ -226,7 +237,7 @@ class TestRotOptSynth:
     @pytest.mark.parametrize("num_wires, wire_labels", [(2, ["a", "b"]), (3, [0, "c", 2])])
     def test_identity_decomposition(self, num_wires, wire_labels):
         """Test that the identity matrix is decomposed correctly."""
-        identity = np.eye(2 ** num_wires)
+        identity = np.eye(2**num_wires)
         ros.rot_opt_synth(identity, wire_labels)
 
     @pytest.mark.with_validation
@@ -243,7 +254,7 @@ class TestRotOptSynthErrors:
     def test_incorrect_matrix_size_raises_error(self):
         """Test that a matrix of incorrect dimensions raises an AssertionError."""
         u = np.eye(4)  # 2-qubit matrix
-        wires = [0, 1, 2] # 3 wires
+        wires = [0, 1, 2]  # 3 wires
 
         # The internal validation `assert len(u) == 2**num_wires` should fail.
         with pytest.raises(AssertionError):

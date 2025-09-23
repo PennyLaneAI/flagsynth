@@ -1,6 +1,7 @@
 import pytest
 import rotoptsynth as ros
 
+
 @pytest.fixture(scope="function")
 def with_validation():
     """Run test with validation."""
@@ -13,6 +14,7 @@ def with_validation():
             ros.disable_validation()
     else:
         yield
+
 
 @pytest.fixture(scope="function")
 def without_validation():

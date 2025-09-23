@@ -42,20 +42,23 @@ class TestTiny:
         yy = np.array([[0, 0, 0, -1], [0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0]])
         assert np.allclose(_yy, yy)
 
-        _x = np.block([[np.zeros((2,2)), np.eye(2)], [np.eye(2), np.zeros((2,2))]])
+        _x = np.block([[np.zeros((2, 2)), np.eye(2)], [np.eye(2), np.zeros((2, 2))]])
         for theta in np.linspace(-np.pi, np.pi, num=7):
             for phi in np.linspace(-np.pi, np.pi, num=7):
                 mat = _rx_rz(theta, phi)
-                rec = _rz_1(phi) @ (np.cos(theta/2) * np.eye(4) - 1j * np.sin(theta/2) * _x)
+                rec = _rz_1(phi) @ (np.cos(theta / 2) * np.eye(4) - 1j * np.sin(theta / 2) * _x)
                 assert np.allclose(mat, rec)
 
-    @pytest.mark.parametrize("u, expected", [
-        (_rx_rz(0.6, -2.82), np.eye(4)),
-        (_cnot, -(qml.Z(0) @ qml.X(1)).matrix()),
-        (some_ising_xy, some_ising_xy @ some_ising_xy),
-        (some_ising_zz, some_ising_zz @ some_ising_zz),
-        (_rz_1(0.1241), np.eye(4)),
-    ])
+    @pytest.mark.parametrize(
+        "u, expected",
+        [
+            (_rx_rz(0.6, -2.82), np.eye(4)),
+            (_cnot, -(qml.Z(0) @ qml.X(1)).matrix()),
+            (some_ising_xy, some_ising_xy @ some_ising_xy),
+            (some_ising_zz, some_ising_zz @ some_ising_zz),
+            (_rz_1(0.1241), np.eye(4)),
+        ],
+    )
     def test_gamma(self, u, expected):
         assert np.allclose(_gamma(u), expected)
 
