@@ -12,6 +12,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import (
     _compute_udv,
     _cossin_decomposition,
     _decompose_3_cnots,
+    one_qubit_decomposition,
 )
 from pennylane.wires import WiresLike
 
@@ -24,8 +25,9 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
     of an AIII Cartan decomposition, using information about the first wire being zeroed or not."""
 
     if zeroed_wires:
-        assert zeroed_wires[0] == wires[0] # Consistency check
-        return rot_opt_synth(a, wires[1:], zeroed_wires[1:])
+        assert wires[0] in zeroed_wires # Consistency check
+        new_zeroed_wires = [z for z in zeroed_wires if z != wires[0]]
+        return rot_opt_synth(a, wires[1:], new_zeroed_wires)
 
     u_sub, d_sub, v_sub = _compute_udv(a, b)
     diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
@@ -44,6 +46,17 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
         *other_ops_u_sub,
     ]
 
+def _rot_opt_synth_one_qubit(u, wire, zeroed):
+    with qml.QueuingManager.stop_recording():
+        new_ops = one_qubit_decomposition(u, wire, return_global_phase=True)
+        if zeroed:
+            rz, *other_ops, gphase = new_ops
+            new_ops = other_ops + [qml.GlobalPhase(gphase.data[0] + 0.5 * rz.data[0])]
+    if qml.QueuingManager.recording():
+        for op in new_ops:
+            qml.apply(op)
+    return new_ops
+
 def _rot_opt_synth_two_qubits(u, wires):
     with qml.queuing.AnnotatedQueue() as q:
         u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
@@ -55,21 +68,6 @@ def _rot_opt_synth_two_qubits(u, wires):
             qml.apply(op)
     return ops
 
-def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
-
-    with qml.queuing.AnnotatedQueue() as q:
-        u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
-        global_phase += _decompose_3_cnots(u, wires, global_phase)
-        qml.GlobalPhase(-global_phase)
-    ops = q.queue
-    if qml.queuing.QueuingManager.recording():
-        for op in ops:
-            qml.apply(op)
-    return ops
-
-def _rot_opt_synth_two_qubits_all_zeroed(u, wires):
-    raise NotImplementedError
-    # todo
 
 def _validate_and_arrange_zeroed_wires(u: np.ndarray, wires: WiresLike, zeroed_wires: WiresLike):
     if not all(z in wires for z in zeroed_wires):
@@ -120,13 +118,9 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
         assert is_unitary(u)
 
     if num_wires == 1:
-        raise NotImplementedError("rot_opt_synth can't handle single wire targets yet")
+        return _rot_opt_synth_one_qubit(u, wires[0], zeroed=bool(zeroed_wires))
 
-    elif num_wires == 2:
-        #if len(zeroed_wires) == 1:
-            #return _rot_opt_synth_two_qubits_first_zeroed(u, wires)
-        if len(zeroed_wires) == 2:
-            return _rot_opt_synth_two_qubits_all_zeroed(u, wires)
+    elif num_wires == 2 and len(zeroed_wires) == 0:
         return _rot_opt_synth_two_qubits(u, wires)
 
     p = len(u) // 2
@@ -159,7 +153,7 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresL
         for _ in zeroed_wires:
             u_rec = np.take(u_rec, 0, num_wires)
             u = np.take(u, 0, num_wires)
-        assert np.allclose(u, u_rec, atol=1e-7)
+        assert np.allclose(u, u_rec, atol=1e-7), f"Mismatch:\n{u=}\n{u_rec=}"
 
     if qml.QueuingManager.recording():
         for op in new_ops:

@@ -20,6 +20,17 @@ from .validation import is_block_diagonal, is_unitary, validation_enabled
 _cnot = qml.CNOT([0, 1]).matrix()
 
 
+def _diag_from_angles(angles):
+    """Create diagonal from four angles of R_ZZ, R_Z^0, R_Z^1 and GlobalPhase."""
+    rzz, rz_0, rz_1, gphase = angles
+    return np.exp(-0.5j * np.array([
+        rzz + rz_0 + rz_1,
+        -rzz + rz_0 - rz_1,
+        -rzz - rz_0 + rz_1,
+        rzz - rz_0 - rz_1,
+    ]) - 1j * gphase)
+
+
 def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of a single-qubit unitary into a diagonal and a remaining
     decomposition:
@@ -46,7 +57,17 @@ def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, lis
 
     Uses the RotOptSynth validation toggle.
     """
-    rz0, ry, rz1, gphase = one_qubit_decomposition(u, wire=wire, return_global_phase=True)
+    with qml.QueuingManager.stop_recording():
+        rz0, *other_ops, gphase = one_qubit_decomposition(u, wire=wire, return_global_phase=True)
+        diagonal = np.exp([-0.5j*rz0.data[0]-1j*gphase.data[0], 0.5j*rz0.data[0]-1j*gphase.data[0]])
+        diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wire)
+
+    if qml.QueuingManager.recording():
+        qml.apply(diag_op)
+        for op in other_ops:
+            qml.apply(op)
+
+    return diag_op, other_ops
 
 
 def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
@@ -92,8 +113,7 @@ def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, 
         c_rz0, c_ry, c_rz1 = one_qubit_decomposition(c_op.data[0], wire=wires[0])
         d_rz0, d_ry, d_rz1 = one_qubit_decomposition(d_op.data[0], wire=wires[1])
 
-        diag_ops = [qml.IsingZZ(rz.data[0], wires=wires), c_rz0, d_rz0, gphase]
-        diagonal = np.diag(ops_to_mat(diag_ops, wires))
+        diagonal = _diag_from_angles(np.array([rz.data[0], c_rz0.data[0], d_rz0.data[0], gphase.data[0]]))
         diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
         other_ops = [c_ry, c_rz1, d_ry, d_rz1, *rest_ops, *a_dec, *b_dec]
 
@@ -244,6 +264,8 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
     Uses the RotOptSynth validation toggle.
     """
     dim = len(u)
+    if dim == 2:
+        return _diag_decomp_one_qubit(u, wires[0])
     if dim == 4:
         return _diag_decomp_two_qubits(u, wires)
     if dim == 8:
