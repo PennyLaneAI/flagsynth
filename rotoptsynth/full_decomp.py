@@ -19,12 +19,13 @@ from .diag_decomps import attach_multiplexer_node, diag_decomp, split_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 
-def _decompose_first_mplx(a, b, wires, first_wire_zeroed):
+def _decompose_first_mplx(a, b, wires, zeroed_wires):
     """Decompose the first multiplexer (in circuit ordering, not matrix multiplication ordering)
     of an AIII Cartan decomposition, using information about the first wire being zeroed or not."""
 
-    if first_wire_zeroed:
-        return rot_opt_synth(a, wires[1:])
+    if zeroed_wires:
+        assert zeroed_wires[0] == wires[0] # Consistency check
+        return rot_opt_synth(a, wires[1:], zeroed_wires[1:])
 
     u_sub, d_sub, v_sub = _compute_udv(a, b)
     diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
@@ -56,7 +57,7 @@ def _rot_opt_synth_two_qubits(u, wires):
 
 def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
     raise NotImplementedError
-    # todo: Work in first_wire_zeroed case
+    # todo
     u = qml.math.expand_matrix(u, wires=wires, wire_order=wires[::-1])
     wires = wires[::-1]
 
@@ -70,14 +71,19 @@ def _rot_opt_synth_two_qubits_first_zeroed(u, wires):
             qml.apply(op)
     return ops
 
-def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashable]=None) -> Sequence[Operator]:
+return _rot_opt_synth_two_qubits_all_zeroed(u, wires):
+    raise NotImplementedError
+    # todo
+
+def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike]=None) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
 
     Args:
         u (np.ndarray): Unitary matrix to be decomposed.
         wires (qml.wires.WireLike): Wires on which the operators in the decomposition should act.
-        zeroed_wire (Hashable): Input wire that is guaranteed to be in the state :math:`|0\rangle`.
-            By default, no wire comes with this assumption/guarantee.
+        zeroed_wires (qml.wires.WiresLike): Wires that are guaranteed to be in the state :math:`|0\rangle`.
+            By default, no wires come with this assumption/guarantee. Must be contained
+            in ``wires``.
 
     Returns:
         Sequence[qml.operation.Operator]: Operators in the rotation-angle-optimal decomposition.
@@ -87,23 +93,25 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
 
     Uses the RotOptSynth validation toggle.
     """
-    if zeroed_wire is not None:
-        print(f"{zeroed_wire=}")
-        if zeroed_wire not in wires:
+    if zeroed_wires is None:
+        zeroed_wires = []
+    elif not isinstance(zeroed_wires, list):
+        zeroed_wires = list(zeroed_wires)
+
+    if zeroed_wires:
+        if not all(z in wires for z in zeroed_wires):
             raise ValueError(
-                "A provided zeroed_wire must be part of the provided wires. "
-                f"Got {zeroed_wire=} and {wires=}"
+                "All provided zeroed_wires must be part of the provided wires. "
+                f"Got {zeroed_wires=} and {wires=}"
             )
-        print(f"{wires=}")
-        zeroed_idx = list(wires).index(zeroed_wire)
-        print(f"{zeroed_idx=}")
-        if zeroed_idx != 0:
-            new_wires = [zeroed_wire] + wires[:zeroed_idx] + wires[zeroed_idx+1:]
+        wires_list = list(wires)
+        zeroed_ids = [wires_list.index(z) for z in zeroed_wires]
+        if sorted(zeroed_ids) != list(range(len(zeroed_wires))):
+            other_wires = [w for i, w in enumerate(wires) if i not in zeroed_ids]
+            new_wires = zeroed_wires + other_wires
             u = qml.math.expand_matrix(u, wires=wires, wire_order=new_wires)
-            return rot_opt_synth(u, wires=new_wires, zeroed_wire=zeroed_wire)
-        first_wire_zeroed = True
+            return rot_opt_synth(u, wires=new_wires, zeroed_wires=zeroed_wires)
     else:
-        first_wire_zeroed = False
 
     num_wires = len(wires)
     assert len(u) == 2**num_wires
@@ -111,8 +119,10 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
         assert is_unitary(u)
 
     if num_wires == 2:
-        if first_wire_zeroed:
+        if len(zeroed_wires) == 1:
             return _rot_opt_synth_two_qubits_first_zeroed(u, wires)
+        elif len(zeroed_wires) == 2:
+            return _rot_opt_synth_two_qubits_all_zeroed(u, wires)
         return _rot_opt_synth_two_qubits(u, wires)
 
     p = len(u) // 2
@@ -129,10 +139,8 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
         k10 = sub_diag[:, None] * k10
         k11 = sub_diag[:, None] * k11
 
-        ops_from_first_mplx = _decompose_first_mplx(k10, k11, wires, first_wire_zeroed)
-
         new_ops = [
-            *ops_from_first_mplx,
+            *_decompose_first_mplx(k10, k11, wires, zeroed_wires),
             qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
             qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
             *attach_multiplexer_node(other_ops_00, other_ops_01, wires[0]),
@@ -143,13 +151,10 @@ def rot_opt_synth(u: np.ndarray, wires: WiresLike, zeroed_wire: Optional[Hashabl
         assert np.allclose(sub_diag * np.exp(0.5j * mplx_angles_rz), diag_k01.data[0])
 
         u_rec = ops_to_mat(new_ops, wires)
-        if first_wire_zeroed:
-            u_rec_sub = np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires)
-            u_sub = np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires)
-            assert np.allclose(u_sub, u_rec_sub, atol=1e-7)
-
-        else:
-            assert np.allclose(u, u_rec, atol=1e-7)
+        for _ in zeroed_wires:
+            u_rec = np.take(u_rec.reshape((2,) * (2*num_wires)), 0, num_wires)
+            u= np.take(u.reshape((2,) * (2*num_wires)), 0, num_wires)
+        assert np.allclose(u, u_rec, atol=1e-7)
 
     if qml.QueuingManager.recording():
         for op in new_ops:
