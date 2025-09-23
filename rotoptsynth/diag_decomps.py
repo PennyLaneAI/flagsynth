@@ -188,7 +188,7 @@ def split_diagonal(diag: np.ndarray) -> tuple[np.ndarray]:
         yields the input diagonal.
 
     """
-    angles = qml.math.angle(diag)  # pylint: disable=no-member
+    angles = np.angle(diag)  # pylint: disable=no-member
     split = len(diag) // 2
     diff = angles[..., split:] - angles[..., :split]
     mean = (angles[..., :split] + angles[..., split:]) / 2

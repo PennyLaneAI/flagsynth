@@ -39,7 +39,7 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
     return [
         *rot_opt_synth(v_sub, wires[1:]),
         qml.SelectPauliRot(
-            -2 * qml.math.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
+            -2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"
         ), # pylint: disable=no-member
         *other_ops_u_sub,
     ]
