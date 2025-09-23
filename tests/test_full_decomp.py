@@ -97,6 +97,17 @@ class TestValidateAndArrangeErrors:
             _ = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
 
 
+targets_1q = [
+    np.eye(2),
+    -np.eye(2),
+    qml.X(0).matrix(),
+    qml.RZ(0.5612, 0).matrix(),
+    qml.GlobalPhase(0.723, 0).matrix(),
+    unitary_group.rvs(2, random_state=2124),
+    unitary_group.rvs(2, random_state=7215),
+    unitary_group.rvs(2, random_state=7613),
+]
+
 targets_2q = [
     np.eye(4),
     qml.CNOT([0, 1]).matrix(),
@@ -143,6 +154,15 @@ class TestRotOptSynth:
     """Tests for rot_opt_synth."""
 
     @pytest.mark.with_validation
+    @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 4), (1, 3)])
+    @pytest.mark.parametrize("target", targets_1q)
+    def test_builtin_validation_one_qubit(self, target, num_zeroed_wires, expected_count):
+        wires = list(range(1))
+        zeroed_wires = list(range(num_zeroed_wires))
+        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        assert ros.count_rotation_angles(ops) == expected_count
+
+    @pytest.mark.with_validation
     @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 16), (1, 12), (2, 11)])
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target, num_zeroed_wires, expected_count):
@@ -179,9 +199,11 @@ class TestRotOptSynth:
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("zeroed_wires", [[], [1], [1, 0]])
-    @pytest.mark.parametrize("n", [2, 3])
+    @pytest.mark.parametrize("zeroed_wires", [[], [0], [1, 0]])
+    @pytest.mark.parametrize("n", [1, 2, 3])
     def test_queuing_matches_return_without_validation(self, n, zeroed_wires):
+        if n == 1 and len(zeroed_wires) == 2:
+            pytest.skip(reason="Can't have multiple zeroed wires on a single wire")
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
             ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
@@ -189,9 +211,11 @@ class TestRotOptSynth:
         assert ops == q.queue
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("zeroed_wires", [[], [1], [1, 0]])
-    @pytest.mark.parametrize("n", [2, 3])
+    @pytest.mark.parametrize("zeroed_wires", [[], [0], [1, 0]])
+    @pytest.mark.parametrize("n", [1, 2, 3])
     def test_queuing_matches_return_with_validation(self, n, zeroed_wires):
+        if n == 1 and len(zeroed_wires) == 2:
+            pytest.skip(reason="Can't have multiple zeroed wires on a single wire")
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
             ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
