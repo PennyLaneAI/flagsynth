@@ -1,6 +1,6 @@
 """This module implements a specific two-qubit unitary decomposition from Theorem VI.3
 and Fig. 3 of https://arxiv.org/pdf/quant-ph/0308033, in ``asymmetric_two_qubit_decomp``.
-It is used in the up-to-diagonal decomposition ``diag_decomp``.
+It is used in the up-to-diagonal decomposition ``flag_decomp``.
 """
 
 # pylint: disable=too-many-locals
