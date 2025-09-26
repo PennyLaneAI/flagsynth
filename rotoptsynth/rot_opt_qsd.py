@@ -16,7 +16,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import (
 )
 from pennylane.wires import WiresLike
 
-from .flag_decomps import attach_multiplexer_node, flag_decomp, balance_diagonal
+from .flag_decomp import attach_multiplexer_node, flag_decomp, balance_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 

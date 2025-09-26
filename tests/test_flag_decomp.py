@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 import rotoptsynth as ros
-from rotoptsynth.flag_decomps import _flag_decomp_two_qubits
+from rotoptsynth.flag_decomp import _flag_decomp_two_qubits
 
 # Test data for different gate types
 test_data_rotations = [
