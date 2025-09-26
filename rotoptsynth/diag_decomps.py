@@ -232,25 +232,27 @@ def attach_multiplexer_node(
     return new_ops
 
 
-def split_diagonal(diag: np.ndarray) -> tuple[np.ndarray]:
-    """Split a diagonal into a diagonal on one qubit less and the angles for an RZ multiplexer.
+def balance_diagonal(diag0: np.ndarray, diag1: np.ndarray) -> tuple[np.ndarray]:
+    """Balance diagonals into a diagonal on one qubit less and the angles for an RZ multiplexer.
     Adapted from ``qml.DiagonalQubitUnitary.compute_decomposition`` to split off the first qubit
-    instead of the last.
+    instead of the last, and to adjust for typical use case of input diagonal being given in two
+    halves.
 
     Args:
-        diag (np.ndarray): Diagonal to be split
+        diag0 (np.ndarray): First half of the diagonal to be split/balanced
+        diag1 (np.ndarray): Second half of the diagonal to be split/balanced
 
     Returns:
         tuple(np.ndarray): Diagonal on one qubit less and angles to be passed
         into ``qml.SelectPauliRot`` so that a ``DiagonalQubitUnitary`` of the first return value
         multiplied with ``qml.SelectPauliRot`` of the second return value with ``rot_axis="Z"``
-        yields the input diagonal.
+        yields the (concatenated) inputs.
 
     """
-    angles = np.angle(diag)  # pylint: disable=no-member
-    split = len(diag) // 2
-    diff = angles[..., split:] - angles[..., :split]
-    mean = (angles[..., :split] + angles[..., split:]) / 2
+    angles0 = np.angle(diag0)
+    angles1 = np.angle(diag1)
+    diff = angles1 - angles0
+    mean = (angles0 + angles1) / 2
     return np.exp(1j * mean), diff
 
 
@@ -278,36 +280,31 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
         return _diag_decomp_one_qubit(u, wires[0])
     if dim == 4:
         return _diag_decomp_two_qubits(u, wires)
-    if dim == 8:
-        sub_decomp = _diag_decomp_two_qubits
-    else:
-        sub_decomp = diag_decomp
 
     p = q = dim // 2
-    k1, a, k2 = aiii_kak(u, p, q, validate=validation_enabled())
+    k0, a, k1 = aiii_kak(u, p, q, validate=validation_enabled())
     if validation_enabled():
+        assert is_unitary(k0) and is_block_diagonal(k0, p)
         assert is_unitary(k1) and is_block_diagonal(k1, p)
-        assert is_unitary(k2) and is_block_diagonal(k2, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        k1_0_diag_op, k1_0_ops = sub_decomp(k1[:p, :p], wires=wires[1:])
-        k1_1_diag_op, k1_1_ops = sub_decomp(k1[p:, p:], wires=wires[1:])
-        smaller_diag, multiplexer_angles_k1 = split_diagonal(
-            np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])
+        k0_0_diag_op, k0_0_ops = diag_decomp(k0[:p, :p], wires=wires[1:])
+        k0_1_diag_op, k0_1_ops = diag_decomp(k0[p:, p:], wires=wires[1:])
+        smaller_diag, multiplexer_angles_k0 = balance_diagonal(k0_0_diag_op.data[0], k0_1_diag_op.data[0])
         )
-        k2_0_diag_op, k2_0_ops = sub_decomp(np.diag(smaller_diag) @ k2[:p, :p], wires=wires[1:])
-        k2_1_diag_op, k2_1_ops = sub_decomp(np.diag(smaller_diag) @ k2[p:, p:], wires=wires[1:])
+        k1_0_diag_op, k1_0_ops = diag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:])
+        k1_1_diag_op, k1_1_ops = diag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:])
         multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
-        diagonal = np.concatenate([k2_0_diag_op.data[0], k2_1_diag_op.data[0]])
+        diagonal = np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])
         diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
         other_ops = [
-            *attach_multiplexer_node(k2_0_ops, k2_1_ops, multiplexer_wire=wires[0]),
+            *attach_multiplexer_node(k1_0_ops, k1_1_ops, multiplexer_wire=wires[0]),
             qml.SelectPauliRot(multiplexer_angles_a, wires[1:], target_wire=wires[0], rot_axis="Y"),
             qml.SelectPauliRot(
-                multiplexer_angles_k1, wires[1:], target_wire=wires[0], rot_axis="Z"
+                multiplexer_angles_k0, wires[1:], target_wire=wires[0], rot_axis="Z"
             ),
-            *attach_multiplexer_node(k1_0_ops, k1_1_ops, multiplexer_wire=wires[0]),
+            *attach_multiplexer_node(k0_0_ops, k0_1_ops, multiplexer_wire=wires[0]),
         ]
         if validation_enabled():
             u_rec = ops_to_mat([diag_op] + other_ops, wires)
