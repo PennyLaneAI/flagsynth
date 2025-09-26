@@ -256,13 +256,17 @@ def balance_diagonal(diag0: np.ndarray, diag1: np.ndarray) -> tuple[np.ndarray]:
     return np.exp(1j * mean), diff
 
 
-def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
+def diag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of ``u`` into a diagonal, which is returned separately,
-    and other operators. Uses recursion, with ``_diag_decomp_two_qubits`` as the base case.
+    and other operators. Uses recursion, with ``_diag_decomp_two_qubits`` as the base case by
+    default. By setting ``base_case_dim=2``, the single-qubit flag decomposition can be used.
 
     Args:
         u (np.ndarray): Unitary to be decomposed.
         wires (qml.wires.WiresLike): Wires that the operators in the decomposition should act on.
+        base_case_dim (int): Dimension to consider as the base case for the recursive flag decomposition.
+            Currently, ``2`` for the single qubit base case and ``4`` for the two-qubit
+            base case are supported.
 
     Returns:
         tuple[qml.operation.Operator, list[qml.operation.Operator]]: Diagonal operator
@@ -278,7 +282,7 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
     dim = len(u)
     if dim == 2:
         return _diag_decomp_one_qubit(u, wires[0])
-    if dim == 4:
+    if dim == 4 and base_case_dim == 4:
         return _diag_decomp_two_qubits(u, wires)
 
     p = q = dim // 2
@@ -288,13 +292,13 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
         assert is_unitary(k1) and is_block_diagonal(k1, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        k0_0_diag_op, k0_0_ops = diag_decomp(k0[:p, :p], wires=wires[1:])
-        k0_1_diag_op, k0_1_ops = diag_decomp(k0[p:, p:], wires=wires[1:])
+        k0_0_diag_op, k0_0_ops = diag_decomp(k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
+        k0_1_diag_op, k0_1_ops = diag_decomp(k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
         smaller_diag, multiplexer_angles_k0 = balance_diagonal(
             k0_0_diag_op.data[0], k0_1_diag_op.data[0]
         )
-        k1_0_diag_op, k1_0_ops = diag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:])
-        k1_1_diag_op, k1_1_ops = diag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:])
+        k1_0_diag_op, k1_0_ops = diag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
+        k1_1_diag_op, k1_1_ops = diag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
         multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
         diagonal = np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])

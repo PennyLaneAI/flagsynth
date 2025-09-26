@@ -98,7 +98,7 @@ def count_clifford(theta, verbose=False, atol=1e-6):
     return (cliffs, non_cliffs, zeros)
 
 
-_counts = {
+_rotation_counts = {
     qml.RX: 1,
     qml.RY: 1,
     qml.RZ: 1,
@@ -114,4 +114,16 @@ _counts = {
 def count_rotation_angles(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""
     assert all(has_unit_determinant(op.data[0]) for op in ops if isinstance(op, qml.QubitUnitary))
-    return sum((entry(op) if callable(entry := _counts[type(op)]) else entry) for op in ops)
+    return sum((entry(op) if callable(entry := _rotation_counts[type(op)]) else entry) for op in ops)
+
+_cnot_counts = {
+    qml.CNOT: 1,
+    qml.CZ: 1,
+    qml.SelectPauliRot: lambda op: 2 ** (len(op.wires) - 1),
+    qml.DiagonalQubitUnitary: lambda op: 2 ** len(op.wires) - 2,
+}
+
+
+def count_cnots(ops):
+    """Count how many rotation angles parametrize a give sequence of operators."""
+    return sum((entry(op) if callable(entry := _cnot_counts[type(op)]) else entry) for op in ops)
