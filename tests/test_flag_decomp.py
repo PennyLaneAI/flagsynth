@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 import rotoptsynth as ros
-from rotoptsynth.diag_decomps import _diag_decomp_two_qubits
+from rotoptsynth.flag_decomps import _flag_decomp_two_qubits
 
 # Test data for different gate types
 test_data_rotations = [
@@ -182,12 +182,12 @@ targets_2q = [
 ]
 
 
-class TestDiagDecompTwoQubits:
+class TestFlagDecompTwoQubits:
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation(self, target):
-        diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
+        diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
         assert ros.count_rotation_angles([diag_op] + other_ops) == 16
@@ -196,7 +196,7 @@ class TestDiagDecompTwoQubits:
     @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
     @pytest.mark.parametrize("target", targets_2q)
     def test_wires(self, target, wires):
-        diag_op, other_ops = _diag_decomp_two_qubits(target, wires)
+        diag_op, other_ops = _flag_decomp_two_qubits(target, wires)
         assert diag_op.wires == wires
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
 
@@ -204,7 +204,7 @@ class TestDiagDecompTwoQubits:
     def test_queuing_matches_return_without_validation(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
+            diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
 
         assert [diag_op] + other_ops == q.queue
 
@@ -212,7 +212,7 @@ class TestDiagDecompTwoQubits:
     def test_queuing_matches_return_with_validation(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = _diag_decomp_two_qubits(target, [0, 1])
+            diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
 
         assert [diag_op] + other_ops == q.queue
 
@@ -251,21 +251,21 @@ class TestDiagDecomp:
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation_two_qubits(self, target):
-        diag_op, other_ops = ros.diag_decomp(target, [0, 1])
+        diag_op, other_ops = ros.flag_decomp(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target):
-        diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2])
+        diag_op, other_ops = ros.flag_decomp(target, [0, 1, 2])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 30  # 2 times two-qubit case + 2 multiplexers
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target):
-        diag_op, other_ops = ros.diag_decomp(target, [0, 1, 2, 3])
+        diag_op, other_ops = ros.flag_decomp(target, [0, 1, 2, 3])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
         assert len(other_ops) == 62  # 2 times three-qubit case + 2 multiplexers
 
@@ -275,7 +275,7 @@ class TestDiagDecomp:
     def test_wires(self, target, wires):
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        diag_op, other_ops = ros.diag_decomp(target, wires)
+        diag_op, other_ops = ros.flag_decomp(target, wires)
         assert diag_op.wires == wires
         assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
 
@@ -284,7 +284,7 @@ class TestDiagDecomp:
     def test_queuing_matches_return_without_validation(self, n):
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = ros.diag_decomp(target, range(n))
+            diag_op, other_ops = ros.flag_decomp(target, range(n))
 
         assert [diag_op] + other_ops == q.queue
 
@@ -293,6 +293,6 @@ class TestDiagDecomp:
     def test_queuing_matches_return_with_validation(self, n):
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = ros.diag_decomp(target, range(n))
+            diag_op, other_ops = ros.flag_decomp(target, range(n))
 
         assert [diag_op] + other_ops == q.queue

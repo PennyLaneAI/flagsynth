@@ -37,7 +37,7 @@ def _diag_from_angles(angles):
     )
 
 
-def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, list[Operator]]:
+def _flag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of a single-qubit unitary into a diagonal and a remaining
     decomposition:
 
@@ -46,7 +46,7 @@ def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, lis
     ```
 
     This decomposition is trivially derived from a ZYZ decomposition, but it is adjusted to the
-    syntax of ``diag_decomp``.
+    syntax of ``flag_decomp``.
 
     Args:
         u (np.ndarray): Unitary matrix to be decomposed.
@@ -78,7 +78,7 @@ def _diag_decomp_one_qubit(u: np.ndarray, wire: Hashable) -> tuple[Operator, lis
     return diag_op, other_ops
 
 
-def _diag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
+def _flag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of a two-qubit unitary into a diagonal and a remaining
     decomposition:
 
@@ -256,9 +256,9 @@ def balance_diagonal(diag0: np.ndarray, diag1: np.ndarray) -> tuple[np.ndarray]:
     return np.exp(1j * mean), diff
 
 
-def diag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[Operator, list[Operator]]:
+def flag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of ``u`` into a diagonal, which is returned separately,
-    and other operators. Uses recursion, with ``_diag_decomp_two_qubits`` as the base case by
+    and other operators. Uses recursion, with ``_flag_decomp_two_qubits`` as the base case by
     default. By setting ``base_case_dim=2``, the single-qubit flag decomposition can be used.
 
     Args:
@@ -281,9 +281,9 @@ def diag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[
     """
     dim = len(u)
     if dim == 2:
-        return _diag_decomp_one_qubit(u, wires[0])
+        return _flag_decomp_one_qubit(u, wires[0])
     if dim == 4 and base_case_dim == 4:
-        return _diag_decomp_two_qubits(u, wires)
+        return _flag_decomp_two_qubits(u, wires)
 
     p = q = dim // 2
     k0, a, k1 = aiii_kak(u, p, q, validate=validation_enabled())
@@ -292,13 +292,13 @@ def diag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[
         assert is_unitary(k1) and is_block_diagonal(k1, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        k0_0_diag_op, k0_0_ops = diag_decomp(k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
-        k0_1_diag_op, k0_1_ops = diag_decomp(k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
+        k0_0_diag_op, k0_0_ops = flag_decomp(k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
+        k0_1_diag_op, k0_1_ops = flag_decomp(k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
         smaller_diag, multiplexer_angles_k0 = balance_diagonal(
             k0_0_diag_op.data[0], k0_1_diag_op.data[0]
         )
-        k1_0_diag_op, k1_0_ops = diag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
-        k1_1_diag_op, k1_1_ops = diag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
+        k1_0_diag_op, k1_0_ops = flag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
+        k1_1_diag_op, k1_1_ops = flag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
         multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
         diagonal = np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])

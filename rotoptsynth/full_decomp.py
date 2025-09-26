@@ -16,7 +16,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import (
 )
 from pennylane.wires import WiresLike
 
-from .diag_decomps import attach_multiplexer_node, diag_decomp, balance_diagonal
+from .flag_decomps import attach_multiplexer_node, flag_decomp, balance_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 
@@ -31,7 +31,7 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
         return rot_opt_synth(a, wires[1:], new_zeroed_wires)
 
     u_sub, d_sub, v_sub = _compute_udv(a, b)
-    diag_u_sub, other_ops_u_sub = diag_decomp(u_sub, wires[1:])
+    diag_u_sub, other_ops_u_sub = flag_decomp(u_sub, wires[1:])
     v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
 
     if validation_enabled():
@@ -132,8 +132,8 @@ def rot_opt_synth(
 
     with qml.QueuingManager.stop_recording():
         # Diag-decompose k00 and k01
-        diag_k00, other_ops_00 = diag_decomp(k00, wires[1:])
-        diag_k01, other_ops_01 = diag_decomp(k01, wires[1:])
+        diag_k00, other_ops_00 = flag_decomp(k00, wires[1:])
+        diag_k01, other_ops_01 = flag_decomp(k01, wires[1:])
 
         sub_diag, mplx_angles_rz = balance_diagonal(diag_k00.data[0], diag_k01.data[0])
         k10 = sub_diag[:, None] * k10
