@@ -135,9 +135,7 @@ def rot_opt_synth(
         diag_k00, other_ops_00 = diag_decomp(k00, wires[1:])
         diag_k01, other_ops_01 = diag_decomp(k01, wires[1:])
 
-        sub_diag, mplx_angles_rz = balance_diagonal(
-            diag_k00.data[0], diag_k01.data[0]
-        )
+        sub_diag, mplx_angles_rz = balance_diagonal(diag_k00.data[0], diag_k01.data[0])
         k10 = sub_diag[:, None] * k10
         k11 = sub_diag[:, None] * k11
 

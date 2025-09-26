@@ -290,7 +290,8 @@ def diag_decomp(u: np.ndarray, wires: WiresLike) -> tuple[Operator, list[Operato
     with qml.queuing.QueuingManager.stop_recording():
         k0_0_diag_op, k0_0_ops = diag_decomp(k0[:p, :p], wires=wires[1:])
         k0_1_diag_op, k0_1_ops = diag_decomp(k0[p:, p:], wires=wires[1:])
-        smaller_diag, multiplexer_angles_k0 = balance_diagonal(k0_0_diag_op.data[0], k0_1_diag_op.data[0])
+        smaller_diag, multiplexer_angles_k0 = balance_diagonal(
+            k0_0_diag_op.data[0], k0_1_diag_op.data[0]
         )
         k1_0_diag_op, k1_0_ops = diag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:])
         k1_1_diag_op, k1_1_ops = diag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:])
