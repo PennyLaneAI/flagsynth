@@ -1,5 +1,5 @@
 """This module contains the main function to perform rotation-angle-optimal unitary synthesis,
-called ``rot_opt_synth`` (at the moment)."""
+called ``rot_opt_qsd`` (at the moment)."""
 
 # pylint: disable=too-many-locals
 from collections.abc import Sequence
@@ -28,7 +28,7 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
     if zeroed_wires:
         assert wires[0] in zeroed_wires  # Consistency check
         new_zeroed_wires = [z for z in zeroed_wires if z != wires[0]]
-        return rot_opt_synth(a, wires[1:], new_zeroed_wires)
+        return rot_opt_qsd(a, wires[1:], new_zeroed_wires)
 
     u_sub, d_sub, v_sub = _compute_udv(a, b)
     diag_u_sub, other_ops_u_sub = flag_decomp(u_sub, wires[1:])
@@ -40,13 +40,13 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
             ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, b
         )
     return [
-        *rot_opt_synth(v_sub, wires[1:]),
+        *rot_opt_qsd(v_sub, wires[1:]),
         qml.SelectPauliRot(-2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
         *other_ops_u_sub,
     ]
 
 
-def _rot_opt_synth_one_qubit(u, wire, zeroed):
+def _rot_opt_qsd_one_qubit(u, wire, zeroed):
     with qml.QueuingManager.stop_recording():
         new_ops = one_qubit_decomposition(u, wire, return_global_phase=True)
         if zeroed:
@@ -58,7 +58,7 @@ def _rot_opt_synth_one_qubit(u, wire, zeroed):
     return new_ops
 
 
-def _rot_opt_synth_two_qubits(u, wires):
+def _rot_opt_qsd_two_qubits(u, wires):
     with qml.queuing.AnnotatedQueue() as q:
         u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
         global_phase += _decompose_3_cnots(u, wires, global_phase)
@@ -89,7 +89,7 @@ def _validate_and_arrange_zeroed_wires(u: np.ndarray, wires: WiresLike, zeroed_w
     return u, new_wires
 
 
-def rot_opt_synth(
+def rot_opt_qsd(
     u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike] = None
 ) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
@@ -122,10 +122,10 @@ def rot_opt_synth(
         assert is_unitary(u)
 
     if num_wires == 1:
-        return _rot_opt_synth_one_qubit(u, wires[0], zeroed=bool(zeroed_wires))
+        return _rot_opt_qsd_one_qubit(u, wires[0], zeroed=bool(zeroed_wires))
 
     if num_wires == 2 and len(zeroed_wires) == 0:
-        return _rot_opt_synth_two_qubits(u, wires)
+        return _rot_opt_qsd_two_qubits(u, wires)
 
     p = len(u) // 2
     (k00, k01), mplx_angles_ry, (k10, k11) = _cossin_decomposition(u, p)

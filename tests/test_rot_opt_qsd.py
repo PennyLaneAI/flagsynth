@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 import rotoptsynth as ros
-from rotoptsynth.full_decomp import _validate_and_arrange_zeroed_wires
+from rotoptsynth.rot_opt_qsd import _validate_and_arrange_zeroed_wires
 
 
 class TestValidateAndArrangeZeroedWires:
@@ -158,7 +158,7 @@ def _take_zeroed_submat(arr, n, zeroed_wire):
 
 
 class TestRotOptSynth:
-    """Tests for rot_opt_synth."""
+    """Tests for rot_opt_qsd."""
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("num_zeroed_wires, expected_count", [(0, 4), (1, 3)])
@@ -166,7 +166,7 @@ class TestRotOptSynth:
     def test_builtin_validation_one_qubit(self, target, num_zeroed_wires, expected_count):
         wires = list(range(1))
         zeroed_wires = list(range(num_zeroed_wires))
-        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        ops = ros.rot_opt_qsd(target, wires, zeroed_wires=zeroed_wires)
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
@@ -175,7 +175,7 @@ class TestRotOptSynth:
     def test_builtin_validation_two_qubits(self, target, num_zeroed_wires, expected_count):
         wires = list(range(2))
         zeroed_wires = list(range(num_zeroed_wires))
-        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        ops = ros.rot_opt_qsd(target, wires, zeroed_wires=zeroed_wires)
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
@@ -186,7 +186,7 @@ class TestRotOptSynth:
     def test_builtin_validation_three_qubits(self, target, num_zeroed_wires, expected_count):
         wires = list(range(3))
         zeroed_wires = list(range(num_zeroed_wires))
-        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        ops = ros.rot_opt_qsd(target, wires, zeroed_wires=zeroed_wires)
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.with_validation
@@ -197,7 +197,7 @@ class TestRotOptSynth:
     def test_builtin_validation_four_qubits(self, target, num_zeroed_wires, expected_count):
         wires = list(range(4))
         zeroed_wires = list(range(num_zeroed_wires))
-        ops = ros.rot_opt_synth(target, wires, zeroed_wires=zeroed_wires)
+        ops = ros.rot_opt_qsd(target, wires, zeroed_wires=zeroed_wires)
         assert ros.count_rotation_angles(ops) == expected_count
 
     @pytest.mark.without_validation
@@ -206,7 +206,7 @@ class TestRotOptSynth:
     def test_wires(self, target, wires):
         n = len(bin(len(target))) - 3
         wires = wires[:n]
-        ops = ros.rot_opt_synth(target, wires)
+        ops = ros.rot_opt_qsd(target, wires)
         assert all(set(op.wires).issubset(set(wires)) for op in ops)
 
     @pytest.mark.without_validation
@@ -217,7 +217,7 @@ class TestRotOptSynth:
             pytest.skip(reason="Can't have multiple zeroed wires on a single wire")
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
+            ops = ros.rot_opt_qsd(target, range(n), zeroed_wires=zeroed_wires)
 
         assert ops == q.queue
 
@@ -229,7 +229,7 @@ class TestRotOptSynth:
             pytest.skip(reason="Can't have multiple zeroed wires on a single wire")
         target = unitary_group.rvs(2**n, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.rot_opt_synth(target, range(n), zeroed_wires=zeroed_wires)
+            ops = ros.rot_opt_qsd(target, range(n), zeroed_wires=zeroed_wires)
 
         assert ops == q.queue
 
@@ -238,18 +238,18 @@ class TestRotOptSynth:
     def test_identity_decomposition(self, num_wires, wire_labels):
         """Test that the identity matrix is decomposed correctly."""
         identity = np.eye(2**num_wires)
-        ros.rot_opt_synth(identity, wire_labels)
+        ros.rot_opt_qsd(identity, wire_labels)
 
     @pytest.mark.with_validation
     def test_toffoli_decomposition(self):
         """Test that the Toffoli gate is decomposed correctly."""
         toffoli = qml.Toffoli([0, 1, 2]).matrix()
-        ros.rot_opt_synth(toffoli, wires=[0, 1, 2])
+        ros.rot_opt_qsd(toffoli, wires=[0, 1, 2])
 
 
 @pytest.mark.with_validation
 class TestRotOptSynthErrors:
-    """Error handling and validation tests for rot_opt_synth."""
+    """Error handling and validation tests for rot_opt_qsd."""
 
     def test_incorrect_matrix_size_raises_error(self):
         """Test that a matrix of incorrect dimensions raises an AssertionError."""
@@ -258,7 +258,7 @@ class TestRotOptSynthErrors:
 
         # The internal validation `assert len(u) == 2**num_wires` should fail.
         with pytest.raises(AssertionError):
-            ros.rot_opt_synth(u, wires)
+            ros.rot_opt_qsd(u, wires)
 
     def test_non_unitary_matrix_raises_error(self):
         """Test that a non-unitary matrix raises an AssertionError."""
@@ -268,4 +268,4 @@ class TestRotOptSynthErrors:
 
         # The internal validation `assert is_unitary(u)` should fail.
         with pytest.raises(AssertionError):
-            ros.rot_opt_synth(u, wires=[0, 1])
+            ros.rot_opt_qsd(u, wires=[0, 1])
