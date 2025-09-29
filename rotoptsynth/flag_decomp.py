@@ -113,24 +113,23 @@ def _flag_decomp_two_qubits(u: np.ndarray, wires: WiresLike) -> tuple[Operator, 
 
     u_mod = u @ _cnot  # Optimize cnot multiplication away
     with qml.QueuingManager.stop_recording():
-        rz, _, c_op, d_op, *rest_ops, a_op, b_op, gphase = asymmetric_two_qubit_decomp(u_mod, wires)
+        psi_rz, c, d, theta_rx, phi_rz, a, b, gphase = asymmetric_two_qubit_decomp(u_mod)
 
         # Decompose A, B, C and D via Euler decomposition
-        a_dec = one_qubit_decomposition(a_op.data[0], wire=wires[0])
-        b_dec = one_qubit_decomposition(b_op.data[0], wire=wires[1])
-        c_rz0, c_ry, c_rz1 = one_qubit_decomposition(c_op.data[0], wire=wires[0])
-        d_rz0, d_ry, d_rz1 = one_qubit_decomposition(d_op.data[0], wire=wires[1])
+        a_dec = one_qubit_decomposition(a, wire=wires[0])
+        b_dec = one_qubit_decomposition(b, wire=wires[1])
+        c_rz0, c_ry, c_rz1 = one_qubit_decomposition(c, wire=wires[0])
+        d_rz0, d_ry, d_rz1 = one_qubit_decomposition(d, wire=wires[1])
 
         diagonal = _diag_from_angles(
-            np.array([rz.data[0], c_rz0.data[0], d_rz0.data[0], gphase.data[0]])
+            np.array([psi_rz, c_rz0.data[0], d_rz0.data[0], gphase])
         )
         diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
-        other_ops = [c_ry, c_rz1, d_ry, d_rz1, *rest_ops, *a_dec, *b_dec]
+        other_ops = [c_ry, c_rz1, d_ry, d_rz1, qml.CNOT(wires), qml.RX(theta_rx, wires[0]), qml.RZ(phi_rz, wires[1]), qml.CNOT(wires), *a_dec, *b_dec]
 
     if validation_enabled():
         u_rec = ops_to_mat([diag_op] + other_ops, wires)
         assert np.allclose(u, u_rec, atol=1e-7)
-        assert isinstance(_, qml.CNOT)
 
     if qml.QueuingManager.recording():
         qml.apply(diag_op)

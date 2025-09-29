@@ -69,34 +69,29 @@ class TestAsymmetricTwoQubitDecomp:
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets)
     def test_builtin_validation(self, target):
-        ops = ros.asymmetric_two_qubit_decomp(target, [0, 1])
-        assert len(ops) == 11
-        assert sum(isinstance(op, qml.CNOT) for op in ops) == 3
-        assert ros.count_rotation_angles(ops) == 16
+        data = ros.asymmetric_two_qubit_decomp(target)
+        assert len(data) == 8
+        expected_floats = [0, 3, 4, 7]
+        for i, d in enumerate(data):
+            if i in expected_floats:
+                assert isinstance(d, float)
+            else:
+                assert isinstance(d, np.ndarray)
+                assert d.dtype == np.complex128
+                assert d.shape == (2, 2)
+                assert np.isclose(np.linalg.det(d), 1)
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
-    @pytest.mark.parametrize("target", targets)
-    def test_wires(self, target, wires):
-        ops = ros.asymmetric_two_qubit_decomp(target, wires)
-        assert all(set(op.wires).issubset(set(wires)) for op in ops)
-
-    @pytest.mark.without_validation
-    @pytest.mark.parametrize("n", [2, 3, 4, 5])
-    def queuing_matches_return(self, n):
-        assert not ros.validation_enabled()
-        target = unitary_group.rvs(2**n, random_state=8152)
+    def test_no_queuing(self):
+        target = unitary_group.rvs(4, random_state=8152)
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.asymmetric_two_qubit_decomp(target, range(n))
+            _ = ros.asymmetric_two_qubit_decomp(target)
 
-        assert ops == q.queue
+        assert not q.queue
 
     @pytest.mark.with_validation
-    @pytest.mark.parametrize("n", [2, 3, 4, 5])
-    def queuing_matches_return_with_validation(self, n):
-        assert not ros.validation_enabled()
-        target = unitary_group.rvs(2**n, random_state=8152)
+    def test_no_queuing_with_validation(self):
+        target = unitary_group.rvs(4, random_state=852)
         with qml.queuing.AnnotatedQueue() as q:
-            ops = ros.asymmetric_two_qubit_decomp(target, range(n))
-
-        assert ops == q.queue
+            _ = ros.asymmetric_two_qubit_decomp(target)
+        assert not q.queue

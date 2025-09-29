@@ -21,7 +21,7 @@ from .validation import (
 
 # Matrices and matrix functions
 
-_cnot = qml.CNOT([0, 1]).matrix()
+_cnot = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]])
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
 
@@ -30,7 +30,7 @@ def _rz_1(theta):
     return np.diag(np.exp([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta]))
 
 
-_yy = qml.matrix(qml.Y(0) @ qml.Y(1), wire_order=[0, 1])
+_yy = np.array([[0, 0, 0, -1], [0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0]])
 """Matrix of the Pauli word "YY" acting on two wires."""
 
 _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 0, 0]]) / np.sqrt(2)
@@ -38,13 +38,12 @@ _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 
 of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 
 
-@partial(qml.matrix, wire_order=[0, 1])
 def _rx_rz(theta, phi):
     """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
     ordering ``[0, 1]``."""
-    qml.RX(theta, 0)
-    qml.RZ(phi, 1)
-
+    rx = np.array([[np.cos(theta / 2), -1j * np.sin(theta / 2)], [-1j * np.sin(theta / 2), np.cos(theta / 2)]])
+    rz = np.array([[np.exp(-0.5j * phi), 0], [0, np.exp(0.5j * phi)]])
+    return np.kron(rx, rz)
 
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
@@ -206,7 +205,7 @@ def _prop_iv3(u, v):
     return a, b, c, d
 
 
-def asymmetric_two_qubit_decomp(u, wires):
+def asymmetric_two_qubit_decomp(u):
     """Compute a 3-CNOT decomposition of a two-qubit unitary of the following form:
 
     ```
@@ -223,7 +222,6 @@ def asymmetric_two_qubit_decomp(u, wires):
 
     Args:
         u (np.ndarray): Two-qubit unitary matrix to decompose.
-        wires (Sequence): Two wires on which the operators in the unitary decomposition act
 
     Returns:
         list[qml.operation.Operator]: Operators in the decomposition
@@ -236,36 +234,38 @@ def asymmetric_two_qubit_decomp(u, wires):
     if validation_enabled():
         assert u.shape == (4, 4)
         assert is_unitary(u)
-        assert len(wires) == 2
     u_mod = u @ _cnot
     gphase = np.angle(np.linalg.det(u_mod)) / 4
     u_mod = np.exp(-1j * gphase) * u_mod
 
-    with qml.queuing.QueuingManager.stop_recording():
-        psi, theta, phi = _prop_v2(u_mod)
-        _u = u_mod @ _cnot @ _rz_1(psi) @ _cnot
-        v = _cnot @ _rx_rz(theta, phi) @ _cnot
-        a, b, c, d = _prop_iv3(_u, v)
-        if validation_enabled():
-            assert np.allclose(np.kron(a, b) @ v @ np.kron(c, d), _u)
-            assert np.allclose(
-                u_mod, np.kron(a, b) @ v @ np.kron(c, d) @ _cnot @ _rz_1(-psi) @ _cnot
-            )
-
-    ops = [
-        qml.RZ(-psi, wires[1]),
-        qml.CNOT(wires),
-        qml.QubitUnitary(c, wires[0]),
-        qml.QubitUnitary(d, wires[1]),
-        qml.CNOT(wires),
-        qml.RX(theta, wires[0]),
-        qml.RZ(phi, wires[1]),
-        qml.CNOT(wires),
-        qml.QubitUnitary(a, wires[0]),
-        qml.QubitUnitary(b, wires[1]),
-        qml.GlobalPhase(-gphase),
-    ]
+    psi, theta, phi = _prop_v2(u_mod)
+    _u = u_mod @ _cnot @ _rz_1(psi) @ _cnot
+    v = _cnot @ _rx_rz(theta, phi) @ _cnot
+    a, b, c, d = _prop_iv3(_u, v)
     if validation_enabled():
-        u_rec = ops_to_mat(ops, wires)
+        assert np.allclose(np.kron(a, b) @ v @ np.kron(c, d), _u)
+        assert np.allclose(
+            u_mod, np.kron(a, b) @ v @ np.kron(c, d) @ _cnot @ _rz_1(-psi) @ _cnot
+        )
+
+    # Data for output ops
+    # RZ_1, CX, SU(2), SU(2), CX, RX_0, RZ_1 CX, SU(2), SU(2), GlobalPhase
+    data = [-psi, c, d, theta, phi, a, b, -gphase]
+    if validation_enabled():
+        with qml.QueuingManager.stop_recording():
+            ops = [
+                qml.RZ(data[0], [1]),
+                qml.CNOT([0, 1]),
+                qml.QubitUnitary(data[1], [0]),
+                qml.QubitUnitary(data[2], [1]),
+                qml.CNOT([0, 1]),
+                qml.RX(data[3], [0]),
+                qml.RZ(data[4], [1]),
+                qml.CNOT([0, 1]),
+                qml.QubitUnitary(data[5], [0]),
+                qml.QubitUnitary(data[6], [1]),
+                qml.GlobalPhase(data[7]),
+            ]
+        u_rec = ops_to_mat(ops, [0, 1])
         assert np.allclose(u, u_rec)
-    return ops
+    return data
