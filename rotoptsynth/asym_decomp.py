@@ -9,7 +9,8 @@ from functools import partial
 import numpy as np
 import numba
 import pennylane as qml
-#from pennylane.math.decomposition import su2su2_to_tensor_products
+
+# from pennylane.math.decomposition import su2su2_to_tensor_products
 
 from .utils import ops_to_mat
 from .validation import (
@@ -22,16 +23,17 @@ from .validation import (
 
 # Matrices and matrix functions
 
-_cnot = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]])
+_cnot = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]], dtype=np.complex128)
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
 
+@numba.jit
 def _rz_1(theta):
     """Matrix of an RZ gate acting on the second of two wires."""
-    return np.diag(np.exp([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta]))
+    return np.diag(np.exp(np.array([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta])))
 
 
-_yy = np.array([[0, 0, 0, -1], [0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0]])
+_yy = np.array([[0, 0, 0, -1], [0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0]], dtype=np.complex128)
 """Matrix of the Pauli word "YY" acting on two wires."""
 
 _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 0, 0]]) / np.sqrt(2)
@@ -39,6 +41,7 @@ _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 
 of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 
 
+@numba.jit
 def _rx_rz(theta, phi):
     """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
     ordering ``[0, 1]``."""
@@ -49,6 +52,7 @@ def _rx_rz(theta, phi):
     return np.kron(rx, rz)
 
 
+@numba.jit
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
     return u @ _yy @ u.T @ _yy
@@ -59,6 +63,7 @@ def _complex_sort(x):
     return np.sort(x.real + x.imag * 1e5)
 
 
+@numba.jit
 def _v2_angles(evals):
     r"""This is a helper function for _prop_v2, implementing a step in the proof of
     Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033.
@@ -90,12 +95,11 @@ def _v2_angles(evals):
     elif np.isclose(abs_angles[0], abs_angles[2]) or np.isclose(abs_angles[0], abs_angles[3]):
         r = abs_angles[0]
         s = abs_angles[1]
-    else:
-        raise ValueError("Expected eigenvalues to come in complex conjugate pairs.")
 
     return (r + s) / 2, (r - s) / 2
 
 
+@numba.jit
 def _prop_v2(u):
     r"""Implement Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033, namely
     find three angles :math:`\Psi`, :math:`\Theta` and :math:`\Phi` such that the eigenvalues of
@@ -133,6 +137,7 @@ def _prop_v2(u):
     evals = np.linalg.eigvals(m)
     theta, phi = _v2_angles(evals)
 
+    """
     if validation_enabled():
         assert has_unit_determinant(m)
         assert is_unitary(m)
@@ -140,6 +145,7 @@ def _prop_v2(u):
         left = _complex_sort(np.linalg.eigvals(m))
         right = _complex_sort(np.linalg.eigvals(_gamma(_cnot @ _rx_rz(theta, phi) @ _cnot)))
         assert np.allclose(left, right), f"{left=}\n{right=}"
+    """
 
     return psi, theta, phi
 

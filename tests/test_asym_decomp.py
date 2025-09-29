@@ -53,7 +53,7 @@ class TestTiny:
         "u, expected",
         [
             (_rx_rz(0.6, -2.82), np.eye(4)),
-            (_cnot, -(qml.Z(0) @ qml.X(1)).matrix()),
+            (_cnot.astype(np.complex128), -(qml.Z(0) @ qml.X(1)).matrix()),
             (some_ising_xy, some_ising_xy @ some_ising_xy),
             (some_ising_zz, some_ising_zz @ some_ising_zz),
             (_rz_1(0.1241), np.eye(4)),
