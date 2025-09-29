@@ -146,7 +146,7 @@ def zyz_rotation_angles(U):
 
     # U, alpha = convert_to_su2(U)
     # assume U = [[a, b], [c, d]], then here we take U[0, 1] as b
-    abs_b = np.clip(np.abs(U[0]), 0., 1.)[1]
+    abs_b = np.clip(np.abs(U[0]), 0.0, 1.0)[1]
     theta = 2 * np.arcsin(abs_b)
 
     EPS = np.finfo(U.dtype).eps
