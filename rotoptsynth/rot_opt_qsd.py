@@ -16,6 +16,7 @@ from pennylane.ops.op_math.decompositions.unitary_decompositions import (
 )
 from pennylane.wires import WiresLike
 
+from .asym_decomp import su2su2_to_tensor_products
 from .flag_decomp import attach_multiplexer_node, flag_decomp, balance_diagonal
 from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
@@ -72,8 +73,8 @@ def _decompose_3_cnots(U, wires):
 
     a, b, d, e = _extract_abde(A_M)
 
-    A, B = qml.math.decomposition.su2su2_to_tensor_products(M_2)
-    C, D = qml.math.decomposition.su2su2_to_tensor_products(M_1)
+    A, B = su2su2_to_tensor_products(M_2)
+    C, D = su2su2_to_tensor_products(M_1)
     ops = [
         ("SU2", wires[:1], A),
         ("SU2", wires[1:], B),

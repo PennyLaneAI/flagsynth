@@ -10,12 +10,12 @@ import numpy as np
 import pennylane as qml
 from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions import one_qubit_decomposition
-from pennylane.math.decomposition import zyz_rotation_angles
+#from pennylane.math.decomposition import zyz_rotation_angles
 from pennylane.wires import WiresLike
 
 from .asym_decomp import asymmetric_two_qubit_decomp
 from .select_su2 import SelectSU2
-from .utils import aiii_kak, ops_to_mat
+from .utils import aiii_kak, ops_to_mat, zyz_rotation_angles
 from .validation import is_block_diagonal, is_unitary, validation_enabled
 
 # static matrix
@@ -64,7 +64,7 @@ def _flag_decomp_one_qubit(u: np.ndarray) -> tuple[Operator, list[Operator]]:
 
     Uses the RotOptSynth validation toggle.
     """
-    rz0_angle, *other_data, gphase = zyz_rotation_angles(u, return_global_phase=True)
+    rz0_angle, *other_data, gphase = zyz_rotation_angles(u)
     diagonal = np.exp([-0.5j * rz0_angle + 1j * gphase, 0.5j * rz0_angle + 1j * gphase])
     if validation_enabled():
         diag_op = qml.DiagonalQubitUnitary(diagonal, [0])
@@ -111,8 +111,8 @@ def _flag_decomp_two_qubits(u: np.ndarray) -> tuple[Operator, list[Operator]]:
     psi_rz, c, d, theta_rx, phi_rz, a, b, gphase = asymmetric_two_qubit_decomp(u_mod)
 
     # Decompose A, B, C and D via Euler decomposition
-    c_rz0_angle, c_ry_angle, c_rz1_angle = zyz_rotation_angles(c)
-    d_rz0_angle, d_ry_angle, d_rz1_angle = zyz_rotation_angles(d)
+    c_rz0_angle, c_ry_angle, c_rz1_angle, _ = zyz_rotation_angles(c)
+    d_rz0_angle, d_ry_angle, d_rz1_angle, _ = zyz_rotation_angles(d)
 
     diagonal = _diag_from_angles([psi_rz, c_rz0_angle, d_rz0_angle, gphase])
     other_data = [c_ry_angle, c_rz1_angle, d_ry_angle, d_rz1_angle, theta_rx, phi_rz, a, b]

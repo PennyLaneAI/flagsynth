@@ -2,6 +2,7 @@
 cosine-sine-decompositions of matrices, and to count (non-)Clifford angles."""
 
 import numpy as np
+import numba
 import pennylane as qml
 from scipy.linalg import cossin
 
@@ -133,3 +134,31 @@ _cnot_counts = {
 def count_cnots(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""
     return sum((entry(op) if callable(entry := _cnot_counts[type(op)]) else entry) for op in ops)
+
+
+@numba.njit
+def zyz_rotation_angles(U):
+    U = np.asarray(U, np.complex128)
+    # with np.errstate(divide="ignore", invalid="ignore"):
+    determinant = np.linalg.det(U)
+    global_phase = np.angle(determinant) / 2
+    U = U * np.exp(-1j * global_phase)
+
+    # U, alpha = convert_to_su2(U)
+    # assume U = [[a, b], [c, d]], then here we take U[0, 1] as b
+    abs_b = np.clip(np.abs(U[0]), 0., 1.)[1]
+    theta = 2 * np.arcsin(abs_b)
+
+    EPS = np.finfo(U.dtype).eps
+    half_phi_plus_omega = np.angle(U[..., 1, 1] + EPS)
+    half_omega_minus_phi = np.angle(U[..., 1, 0] + EPS)
+
+    phi = half_phi_plus_omega - half_omega_minus_phi
+    omega = half_phi_plus_omega + half_omega_minus_phi
+
+    # Normalize the angles
+    phi = phi % (4 * np.pi)
+    theta = theta % (4 * np.pi)
+    omega = omega % (4 * np.pi)
+
+    return (phi, theta, omega, global_phase)

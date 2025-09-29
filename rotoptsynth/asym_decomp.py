@@ -10,8 +10,6 @@ import numpy as np
 import numba
 import pennylane as qml
 
-# from pennylane.math.decomposition import su2su2_to_tensor_products
-
 from .utils import ops_to_mat
 from .validation import (
     has_unit_determinant,
@@ -27,7 +25,7 @@ _cnot = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]], dtype
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
 
-@numba.jit
+@numba.njit
 def _rz_1(theta):
     """Matrix of an RZ gate acting on the second of two wires."""
     return np.diag(np.exp(np.array([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta])))
@@ -41,7 +39,7 @@ _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 
 of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 
 
-@numba.jit
+@numba.njit
 def _rx_rz(theta, phi):
     """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
     ordering ``[0, 1]``."""
@@ -52,7 +50,7 @@ def _rx_rz(theta, phi):
     return np.kron(rx, rz)
 
 
-@numba.jit
+@numba.njit
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
     return u @ _yy @ u.T @ _yy
@@ -63,7 +61,7 @@ def _complex_sort(x):
     return np.sort(x.real + x.imag * 1e5)
 
 
-@numba.jit
+@numba.njit
 def _v2_angles(evals):
     r"""This is a helper function for _prop_v2, implementing a step in the proof of
     Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033.
@@ -99,7 +97,7 @@ def _v2_angles(evals):
     return (r + s) / 2, (r - s) / 2
 
 
-@numba.jit
+@numba.njit
 def _prop_v2(u):
     r"""Implement Proposition V.2 from https://arxiv.org/pdf/quant-ph/0308033, namely
     find three angles :math:`\Psi`, :math:`\Theta` and :math:`\Phi` such that the eigenvalues of
@@ -150,7 +148,7 @@ def _prop_v2(u):
     return psi, theta, phi
 
 
-@numba.jit
+@numba.njit
 def _prop_iv3(u, v):
     r"""Given two two-qubit matrices :math:`U, V` that are guaranteed to be equal up to
     multiplication by single-qubit unitaries on either side, find the single-qubit
@@ -284,7 +282,7 @@ def asymmetric_two_qubit_decomp(u):
     return data
 
 
-@numba.jit
+@numba.njit
 def su2su2_to_tensor_products(U):
     r"""Given a matrix :math:`U = A \otimes B` in SU(2) x SU(2), extract A and B
 
