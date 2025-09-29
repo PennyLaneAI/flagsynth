@@ -7,8 +7,9 @@ It is used in the up-to-diagonal decomposition ``flag_decomp``.
 from functools import partial
 
 import numpy as np
+import numba
 import pennylane as qml
-from pennylane.math.decomposition import su2su2_to_tensor_products
+#from pennylane.math.decomposition import su2su2_to_tensor_products
 
 from .utils import ops_to_mat
 from .validation import (
@@ -143,6 +144,7 @@ def _prop_v2(u):
     return psi, theta, phi
 
 
+@numba.jit
 def _prop_iv3(u, v):
     r"""Given two two-qubit matrices :math:`U, V` that are guaranteed to be equal up to
     multiplication by single-qubit unitaries on either side, find the single-qubit
@@ -183,8 +185,9 @@ def _prop_iv3(u, v):
     # Fix determinants
     a[:, 0] *= np.linalg.det(a)
     b[:, 0] *= np.linalg.det(b)
-    c = new_v.conj().T @ b @ a.T @ new_u
+    c = new_v.conj().T @ (b @ a.T).astype(np.complex128) @ new_u
 
+    """
     if validation_enabled():
         assert is_symmetric(pi_u)
         assert is_symmetric(pi_v)
@@ -193,18 +196,21 @@ def _prop_iv3(u, v):
         assert np.allclose(b.T @ pi_v @ b, np.diag(eigvals_v))
         assert is_orthogonal(a @ b.T)
         assert is_orthogonal(c)
+    """
 
     # Move the subgroup elements a @ b.T and c from the standard rep of SO(4)
     # back to the standard rep of SU(2)xSU(2), and decompose the result into single-qubit ops.
-    left_su2_su2 = _magic_basis @ a @ b.T @ _magic_basis.conj().T
+    left_su2_su2 = _magic_basis @ (a @ b.T).astype(np.complex128) @ _magic_basis.conj().T
     a, b = su2su2_to_tensor_products(left_su2_su2)
     right_su2_su2 = _magic_basis @ c @ _magic_basis.conj().T
     c, d = su2su2_to_tensor_products(right_su2_su2)
 
+    """
     if validation_enabled():
-        assert np.allclose(np.kron(a, b), left_su2_su2), f"\n{np.kron(a, b)=}\n{left_su2_su2=}"
+        assert np.allclose(np.kron(a, b), left_su2_su2)#, f"\n{np.kron(a, b)=}\n{left_su2_su2=}"
         assert np.allclose(np.kron(c, d), right_su2_su2)
         assert np.allclose(np.kron(a, b) @ v @ np.kron(c, d), u)
+    """
     return a, b, c, d
 
 
@@ -270,3 +276,48 @@ def asymmetric_two_qubit_decomp(u):
         u_rec = ops_to_mat(ops, [0, 1])
         assert np.allclose(u, u_rec)
     return data
+
+
+@numba.jit
+def su2su2_to_tensor_products(U):
+    r"""Given a matrix :math:`U = A \otimes B` in SU(2) x SU(2), extract A and B
+
+    This process has been described in detail in the Appendix of Coffey & Deiotte
+    https://link.springer.com/article/10.1007/s11128-009-0156-3
+
+    """
+
+    # First, write A = [[a1, a2], [-a2*, a1*]], which we can do for any SU(2) element.
+    # Then, A \otimes B = [[a1 B, a2 B], [-a2*B, a1*B]] = [[C1, C2], [C3, C4]]
+    # where the Ci are 2x2 matrices.
+    c1_0 = U[0, :2].copy()
+    c2_0 = U[0, 2:].copy()
+    c3_0 = U[2, :2].copy()
+    c4_0 = U[2, 2:].copy()
+
+    # From the definition of A \otimes B, C1 C4^\dag = a1^2 I, so we can extract a1
+    C14_00 = np.vdot(c4_0, c1_0)
+    a1 = np.sqrt(C14_00)
+
+    # Similarly, -C2 C3^\dag = a2^2 I, so we can extract a2
+    C23_00 = np.vdot(c3_0, c2_0)
+    a2 = np.sqrt(-C23_00)
+
+    # This gets us a1, a2 up to a sign. To resolve the sign, ensure that
+    # C1 C2^dag = a1 a2* I
+    C12_00 = np.vdot(c2_0, c1_0)
+    if not np.allclose(a1 * np.conj(a2), C12_00):
+        a2 = -a2
+
+    # Construct A
+    A = np.array([[a1, a2], [-np.conj(a2), np.conj(a1)]])
+
+    # Next, extract B. Can do from any of the C, just need to be careful in
+    # case one of the elements of A is 0.
+    # We use B1 unless division by 0 would cause all elements to be inf.
+    if np.allclose(a1, 0.0, atol=1e-6):
+        B = U[0:2, 2:4] / a2
+    else:
+        B = U[0:2, 0:2] / a1
+
+    return A, B
