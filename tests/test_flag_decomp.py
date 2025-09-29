@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 import rotoptsynth as ros
-from rotoptsynth.flag_decomp import _flag_decomp_two_qubits
+from rotoptsynth.flag_decomp import _flag_decomp_two_qubits, _flag_decomp_one_qubit
 
 # Test data for different gate types
 test_data_rotations = [
@@ -169,6 +169,44 @@ class TestAttachMultiplexerNodeErrors:
         with pytest.raises(AssertionError):
             ros.attach_multiplexer_node(ops0, ops1, "mpx")
 
+targets_1q = [
+    np.eye(2),
+    qml.RX(0.623, 0).matrix(),
+    qml.RZ(-2.195, 0).matrix(),
+    unitary_group.rvs(2, random_state=21524),
+    unitary_group.rvs(2, random_state=8364),
+    unitary_group.rvs(2, random_state=9612),
+    -np.eye(2),
+]
+
+
+class TestFlagDecompOneQubit:
+
+    @pytest.mark.with_validation
+    @pytest.mark.parametrize("target", targets_1q)
+    def test_builtin_validation(self, target):
+        diagonal, other_data = _flag_decomp_one_qubit(target)
+        assert isinstance(diagonal, np.ndarray)
+        assert diagonal.dtype == np.complex128
+        assert diagonal.shape == (2,)
+        assert len(other_data) == 2
+        for d in other_data:
+            assert isinstance(d, float)
+
+    @pytest.mark.without_validation
+    def test_no_queuing(self):
+        target = unitary_group.rvs(2, random_state=8364)
+        with qml.queuing.AnnotatedQueue() as q:
+            _ = _flag_decomp_one_qubit(target)
+        assert not q.queue
+
+    @pytest.mark.with_validation
+    def test_no_queuing_with_validation(self):
+        target = unitary_group.rvs(2, random_state=8364)
+        with qml.queuing.AnnotatedQueue() as q:
+            _ = _flag_decomp_one_qubit(target)
+        assert not q.queue
+
 
 targets_2q = [
     np.eye(4),
@@ -187,34 +225,31 @@ class TestFlagDecompTwoQubits:
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_2q)
     def test_builtin_validation(self, target):
-        diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
-        assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
-        assert ros.count_rotation_angles([diag_op] + other_ops) == 16
+        diagonal, other_data = _flag_decomp_two_qubits(target)
+        assert isinstance(diagonal, np.ndarray)
+        assert diagonal.dtype == np.complex128
+        assert diagonal.shape == (4,)
+        assert len(other_data) == 8
+        for d in other_data[:-2]:
+            assert isinstance(d, float)
+        for d in other_data[-2:]:
+            assert isinstance(d, np.ndarray)
+            assert d.shape == (2, 2)
+            assert d.dtype == np.complex128
 
     @pytest.mark.without_validation
-    @pytest.mark.parametrize("wires", [(1, 0), (0, 1), ("a", 5)])
-    @pytest.mark.parametrize("target", targets_2q)
-    def test_wires(self, target, wires):
-        diag_op, other_ops = _flag_decomp_two_qubits(target, wires)
-        assert diag_op.wires == wires
-        assert all(set(op.wires).issubset(set(wires)) for op in other_ops)
-
-    @pytest.mark.without_validation
-    def test_queuing_matches_return_without_validation(self):
+    def test_no_queuing(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
-
-        assert [diag_op] + other_ops == q.queue
+            _ = _flag_decomp_two_qubits(target)
+        assert not q.queue
 
     @pytest.mark.with_validation
-    def test_queuing_matches_return_with_validation(self):
+    def test_no_queuing_with_validation(self):
         target = unitary_group.rvs(4, random_state=8364)
         with qml.queuing.AnnotatedQueue() as q:
-            diag_op, other_ops = _flag_decomp_two_qubits(target, [0, 1])
-
-        assert [diag_op] + other_ops == q.queue
+            _ = _flag_decomp_two_qubits(target)
+        assert not q.queue
 
 
 targets_3q = [
@@ -253,21 +288,21 @@ class TestDiagDecomp:
     def test_builtin_validation_two_qubits(self, target):
         diag_op, other_ops = ros.flag_decomp(target, [0, 1])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 14  # 2 CNOTs + 12 parametrized rotations
+        assert len(other_ops) == 10  # 2 CNOTs + 6 parametrized rotations + 2 SU(2) ops
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_3q)
     def test_builtin_validation_three_qubits(self, target):
         diag_op, other_ops = ros.flag_decomp(target, [0, 1, 2])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 30  # 2 times two-qubit case + 2 multiplexers
+        assert len(other_ops) == 22  # 2 times two-qubit case + 2 multiplexers
 
     @pytest.mark.with_validation
     @pytest.mark.parametrize("target", targets_4q)
     def test_builtin_validation_four_qubits(self, target):
         diag_op, other_ops = ros.flag_decomp(target, [0, 1, 2, 3])
         assert isinstance(diag_op, qml.DiagonalQubitUnitary)
-        assert len(other_ops) == 62  # 2 times three-qubit case + 2 multiplexers
+        assert len(other_ops) == 46  # 2 times three-qubit case + 2 multiplexers
 
     @pytest.mark.without_validation
     @pytest.mark.parametrize("wires", [(1, 0, 2, -1), ("a", 5, "v", 2)])

@@ -6,6 +6,7 @@ import pennylane as qml
 from scipy.linalg import cossin
 
 from .validation import has_unit_determinant
+from .select_su2 import SelectSU2
 
 
 def ops_to_mat(ops, wire_order):
@@ -106,6 +107,7 @@ _rotation_counts = {
     qml.CZ: 0,
     qml.QubitUnitary: lambda op: 4 ** len(op.wires) - 1,  # assumes unit determinant
     qml.SelectPauliRot: lambda op: 2 ** (len(op.wires) - 1),
+    SelectSU2: lambda op: 3 * 2 ** (len(op.wires) - 1),
     qml.GlobalPhase: 1,
     qml.DiagonalQubitUnitary: lambda op: 2 ** (len(op.wires)),
 }
@@ -120,9 +122,9 @@ _cnot_counts = {
     qml.CNOT: 1,
     qml.CZ: 1,
     qml.SelectPauliRot: lambda op: 2 ** (len(op.wires) - 1),
+    SelectSU2: lambda op: 3 * 2 ** (len(op.wires) - 1),
     qml.DiagonalQubitUnitary: lambda op: 2 ** len(op.wires) - 2,
 }
-
 
 def count_cnots(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""
