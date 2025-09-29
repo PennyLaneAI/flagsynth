@@ -11,7 +11,7 @@ from pennylane.operation import Operator
 from pennylane.ops.op_math.decompositions.unitary_decompositions import (
     _compute_udv,
     _cossin_decomposition,
-    _decompose_3_cnots,
+    _multidot, E, E_dag, S_0_dag, S_0, SWAP, _ai_kak, _extract_abde,
     one_qubit_decomposition,
 )
 from pennylane.wires import WiresLike
@@ -32,7 +32,7 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
 
     u_sub, d_sub, v_sub = _compute_udv(a, b)
     diag_u_sub, other_ops_u_sub = flag_decomp(u_sub, wires[1:])
-    v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
+    v_sub = np.diag(diag_u_sub[2]) @ v_sub
 
     if validation_enabled():
         assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, a)
@@ -41,7 +41,8 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires):
         )
     return [
         *rot_opt_qsd(v_sub, wires[1:]),
-        qml.SelectPauliRot(-2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
+        ("SelectPauliRot", wires[1:]+wires[:1], -2 * np.angle(d_sub), "Z"),
+        #qml.SelectPauliRot(-2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
         *other_ops_u_sub,
     ]
 
@@ -57,16 +58,45 @@ def _rot_opt_qsd_one_qubit(u, wire, zeroed):
             qml.apply(op)
     return new_ops
 
+def _decompose_3_cnots(U, wires):
+    W = _multidot(E_dag, S_0_dag, SWAP, U, S_0, E)
+    K_1, A_K, K_2 = _ai_kak(W)
+
+    L_1 = _multidot(E, K_1, E_dag)
+    A_L = _multidot(E, A_K, E_dag)
+    L_2 = _multidot(E, K_2, E_dag)
+
+    M_1 = _multidot(SWAP, S_0, L_1, S_0_dag, SWAP)
+    M_2 = _multidot(S_0, L_2, S_0_dag)
+    A_M = _multidot(SWAP, S_0, A_L, S_0_dag)
+
+    a, b, d, e = _extract_abde(A_M)
+
+    A, B = qml.math.decomposition.su2su2_to_tensor_products(M_2)
+    C, D = qml.math.decomposition.su2su2_to_tensor_products(M_1)
+    ops = [
+        ("SU2", wires[:1], A),
+        ("SU2", wires[1:], B),
+        ("CNOT", wires[::-1]),
+        ("RZ", wires[:1], d),
+        ("RY", wires[1:], b),
+        ("CNOT", wires),
+        ("RY", wires[1:], a),
+        ("CNOT", wires[::-1]),
+        ("SU2", wires[:1], C),
+        ("SU2", wires[1:], D),
+    ]
+
+    return ops, e
 
 def _rot_opt_qsd_two_qubits(u, wires):
-    with qml.queuing.AnnotatedQueue() as q:
-        u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
-        global_phase += _decompose_3_cnots(u, wires, global_phase)
-        qml.GlobalPhase(-global_phase)
-    ops = q.queue
-    if qml.queuing.QueuingManager.recording():
-        for op in ops:
-            qml.apply(op)
+    u, global_phase = qml.math.convert_to_su4(u, return_global_phase=True)
+    ops, phase = _decompose_3_cnots(u, wires)
+    ops.append(("GlobalPhase", wires, -(global_phase+phase)))
+    #ops = q.queue
+    #if qml.queuing.QueuingManager.recording():
+        #for op in ops:
+            #qml.apply(op)
     return ops
 
 
@@ -115,6 +145,7 @@ def rot_opt_qsd(
         zeroed_wires = list(zeroed_wires)
 
     u, wires = _validate_and_arrange_zeroed_wires(u, wires, zeroed_wires)
+    wires = tuple(wires)
 
     num_wires = len(wires)
     assert len(u) == 2**num_wires
@@ -135,14 +166,16 @@ def rot_opt_qsd(
         diag_k00, other_ops_00 = flag_decomp(k00, wires[1:])
         diag_k01, other_ops_01 = flag_decomp(k01, wires[1:])
 
-        sub_diag, mplx_angles_rz = balance_diagonal(diag_k00.data[0], diag_k01.data[0])
+        sub_diag, mplx_angles_rz = balance_diagonal(diag_k00[2], diag_k01[2])
         k10 = sub_diag[:, None] * k10
         k11 = sub_diag[:, None] * k11
 
         new_ops = [
             *_decompose_first_mplx(k10, k11, wires, zeroed_wires),
-            qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
-            qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
+            ("SelectPauliRot", wires[1:] + wires[:1], 2 * mplx_angles_ry, "Y"),
+            #qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
+            ("SelectPauliRot", wires[1:] + wires[:1], mplx_angles_rz, "Z"),
+            #qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
             *attach_multiplexer_node(other_ops_00, other_ops_01, wires[0]),
         ]
 

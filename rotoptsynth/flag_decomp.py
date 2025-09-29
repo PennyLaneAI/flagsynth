@@ -200,45 +200,17 @@ def attach_multiplexer_node(
                 assert np.allclose(np.linalg.det(op1.data[0]), 1.0)
 
     new_ops = []
-    for op0, op1 in zip(ops0, ops1):
-        if isinstance(op0, (qml.RX, qml.RY, qml.RZ)):
-            new_ops.append(
-                qml.SelectPauliRot(
-                    angles=[op0.data[0], op1.data[0]],
-                    control_wires=[multiplexer_wire],
-                    target_wire=op0.wires[0],
-                    rot_axis=op0.name[-1],
-                )
-            )
-        elif isinstance(op0, qml.QubitUnitary):
-            new_ops.append(
-                SelectSU2(
-                    matrices=np.stack([op0.data[0], op1.data[0]]),
-                    control_wires=[multiplexer_wire],
-                    target_wire=op0.wires[0],
-                )
-            )
-        elif isinstance(op0, (qml.CNOT, qml.CZ)):
-            new_ops.append(op0)
-            if qml.queuing.QueuingManager.recording():
-                qml.apply(op0)
-        elif isinstance(op0, qml.SelectPauliRot):
-            new_ops.append(
-                qml.SelectPauliRot(
-                    angles=np.concatenate([op0.data[0], op1.data[0]]),
-                    control_wires=[multiplexer_wire] + list(op0.hyperparameters["control_wires"]),
-                    target_wire=op0.hyperparameters["target_wire"],
-                    rot_axis=op0.hyperparameters["rot_axis"],
-                )
-            )
-        elif isinstance(op0, SelectSU2):
-            new_ops.append(
-                SelectSU2(
-                    matrices=np.concatenate([op0.data[0], op1.data[0]]),
-                    control_wires=[multiplexer_wire] + list(op0.hyperparameters["control_wires"]),
-                    target_wire=op0.hyperparameters["target_wire"],
-                )
-            )
+    for (name, wires, *data0), (_, _, *data1) in zip(ops0, ops1):
+        if name in ("RX", "RY", "RZ"):
+            new_ops.append(("SelectPauliRot", (multiplexer_wire,) + wires, [data0[0], data1[0]], name[-1]))
+        elif name == "SU2":
+            new_ops.append(("SelectSU2", (multiplexer_wire,) + wires, [data0[0], data1[0]]))
+        elif name in ("CNOT", "CZ"):
+            new_ops.append((name, wires))
+        elif name == "SelectPauliRot":
+            new_ops.append(("SelectPauliRot", (multiplexer_wire,) + wires, np.concatenate([data0[0], data1[0]]), data0[1]))
+        elif name == "SelectSU2":
+            new_ops.append(("SelectSU2", (multiplexer_wire,) + wires, np.concatenate([data0[0], data1[0]])))
         else:
             raise NotImplementedError(
                 f"attaching multiplexer node to op of type {type(op0)} ({op0}) is not supported."
@@ -296,29 +268,43 @@ def flag_decomp(
 
     Uses the RotOptSynth validation toggle.
     """
+    wires = tuple(wires)
     dim = len(u)
     if dim == 2:
         diagonal, other_data = _flag_decomp_one_qubit(u)
-        diag_op = qml.DiagonalQubitUnitary(diagonal, wires)
-        other_ops = [qml.RY(other_data[0], wires[0]), qml.RZ(other_data[1], wires[0])]
-        return diag_op, other_ops
+        return ("Diagonal", wires, diagonal), [("RY", wires, other_data[0]), ("RZ", wires, other_data[1])]
+        #diag_op = qml.DiagonalQubitUnitary(diagonal, wires)
+        #other_ops = [qml.RY(other_data[0], wires[0]), qml.RZ(other_data[1], wires[0])]
+        #return diag_op, other_ops
 
     if dim == 4 and base_case_dim == 4:
         diagonal, other_data = _flag_decomp_two_qubits(u)
-        diag_op = qml.DiagonalQubitUnitary(diagonal, wires)
-        other_ops = [
-            qml.RY(other_data[0], wires[0]),
-            qml.RZ(other_data[1], wires[0]),
-            qml.RY(other_data[2], wires[1]),
-            qml.RZ(other_data[3], wires[1]),
-            qml.CNOT(wires),
-            qml.RX(other_data[4], wires[0]),
-            qml.RZ(other_data[5], wires[1]),
-            qml.CNOT(wires),
-            qml.QubitUnitary(other_data[6], wires[0]),
-            qml.QubitUnitary(other_data[7], wires[1]),
+        return ("Diagonal", wires, diagonal), [
+            ("RY", wires[:1], other_data[0]),
+            ("RZ", wires[:1], other_data[1]),
+            ("RY", wires[1:], other_data[2]),
+            ("RZ", wires[1:], other_data[3]),
+            ("CNOT", wires),
+            ("RX", wires[:1], other_data[4]),
+            ("RZ", wires[1:], other_data[5]),
+            ("CNOT", wires),
+            ("SU2", wires[:1], other_data[6]),
+            ("SU2", wires[1:], other_data[7]),
         ]
-        return diag_op, other_ops
+        #diag_op = qml.DiagonalQubitUnitary(diagonal, wires)
+        #other_ops = [
+            #qml.RY(other_data[0], wires[0]),
+            #qml.RZ(other_data[1], wires[0]),
+            #qml.RY(other_data[2], wires[1]),
+            #qml.RZ(other_data[3], wires[1]),
+            #qml.CNOT(wires),
+            #qml.RX(other_data[4], wires[0]),
+            #qml.RZ(other_data[5], wires[1]),
+            #qml.CNOT(wires),
+            #qml.QubitUnitary(other_data[6], wires[0]),
+            #qml.QubitUnitary(other_data[7], wires[1]),
+        #]
+        #return diag_op, other_ops
 
     p = q = dim // 2
     k0, a, k1 = aiii_kak(u, p, q, validate=validation_enabled())
@@ -327,31 +313,31 @@ def flag_decomp(
         assert is_unitary(k1) and is_block_diagonal(k1, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        k0_0_diag_op, k0_0_ops = flag_decomp(
+        k0_0_diag, k0_0_ops = flag_decomp(
             k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim
         )
-        k0_1_diag_op, k0_1_ops = flag_decomp(
+        k0_1_diag, k0_1_ops = flag_decomp(
             k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim
         )
-        smaller_diag, multiplexer_angles_k0 = balance_diagonal(
-            k0_0_diag_op.data[0], k0_1_diag_op.data[0]
-        )
-        k1_0_diag_op, k1_0_ops = flag_decomp(
+        smaller_diag, multiplexer_angles_k0 = balance_diagonal(k0_0_diag[2], k0_1_diag[2])
+        k1_0_diag, k1_0_ops = flag_decomp(
             np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim
         )
-        k1_1_diag_op, k1_1_ops = flag_decomp(
+        k1_1_diag, k1_1_ops = flag_decomp(
             np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim
         )
         multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
-        diagonal = np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])
-        diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
+        diag_op = ("Diagonal", wires, np.concatenate([k1_0_diag[2], k1_1_diag[2]]))
+        #diag_op = qml.DiagonalQubitUnitary(diagonal, wires=wires)
         other_ops = [
             *attach_multiplexer_node(k1_0_ops, k1_1_ops, multiplexer_wire=wires[0]),
-            qml.SelectPauliRot(multiplexer_angles_a, wires[1:], target_wire=wires[0], rot_axis="Y"),
-            qml.SelectPauliRot(
-                multiplexer_angles_k0, wires[1:], target_wire=wires[0], rot_axis="Z"
-            ),
+            ("SelectPauliRot", wires[1:] + wires[:1], multiplexer_angles_a, "Y"),
+            #qml.SelectPauliRot(multiplexer_angles_a, wires[1:], target_wire=wires[0], rot_axis="Y"),
+            ("SelectPauliRot", wires[1:] + wires[:1], multiplexer_angles_k0, "Z"),
+            #qml.SelectPauliRot(
+                #multiplexer_angles_k0, wires[1:], target_wire=wires[0], rot_axis="Z"
+            #),
             *attach_multiplexer_node(k0_0_ops, k0_1_ops, multiplexer_wire=wires[0]),
         ]
         if validation_enabled():
@@ -360,9 +346,9 @@ def flag_decomp(
                 u, u_rec, atol=1e-7
             ), f"Maximal difference (abs): {np.max(np.abs(u-u_rec))}"
 
-    if qml.QueuingManager.recording():
-        qml.apply(diag_op)
-        for op in other_ops:
-            qml.apply(op)
+    #if qml.QueuingManager.recording():
+        #qml.apply(diag_op)
+        #for op in other_ops:
+            #qml.apply(op)
 
     return diag_op, other_ops
