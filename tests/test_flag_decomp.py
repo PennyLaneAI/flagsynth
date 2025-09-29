@@ -169,6 +169,7 @@ class TestAttachMultiplexerNodeErrors:
         with pytest.raises(AssertionError):
             ros.attach_multiplexer_node(ops0, ops1, "mpx")
 
+
 targets_1q = [
     np.eye(2),
     qml.RX(0.623, 0).matrix(),

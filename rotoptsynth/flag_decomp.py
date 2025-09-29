@@ -120,9 +120,11 @@ def _flag_decomp_two_qubits(u: np.ndarray) -> tuple[Operator, list[Operator]]:
     if validation_enabled():
         diag_op = qml.DiagonalQubitUnitary(diagonal, [0, 1])
         other_ops = [
-            qml.RY(c_ry_angle, 0), qml.RZ(c_rz1_angle, 0),
-            qml.RY(d_ry_angle, 1), qml.RZ(d_rz1_angle, 1),
-            qml.CNOT([0, 1]), 
+            qml.RY(c_ry_angle, 0),
+            qml.RZ(c_rz1_angle, 0),
+            qml.RY(d_ry_angle, 1),
+            qml.RZ(d_rz1_angle, 1),
+            qml.CNOT([0, 1]),
             qml.RX(theta_rx, 0),
             qml.RZ(phi_rz, 1),
             qml.CNOT([0, 1]),
@@ -194,8 +196,8 @@ def attach_multiplexer_node(
             if isinstance(op0, qml.SelectPauliRot):
                 assert op0.hyperparameters["rot_axis"] == op1.hyperparameters["rot_axis"]
             if isinstance(op0, (qml.QubitUnitary, SelectSU2)):
-                assert np.allclose(np.linalg.det(op0.data[0]), 1.)
-                assert np.allclose(np.linalg.det(op1.data[0]), 1.)
+                assert np.allclose(np.linalg.det(op0.data[0]), 1.0)
+                assert np.allclose(np.linalg.det(op1.data[0]), 1.0)
 
     new_ops = []
     for op0, op1 in zip(ops0, ops1):
@@ -269,7 +271,9 @@ def balance_diagonal(diag0: np.ndarray, diag1: np.ndarray) -> tuple[np.ndarray]:
     return np.exp(1j * mean), diff
 
 
-def flag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[Operator, list[Operator]]:
+def flag_decomp(
+    u: np.ndarray, wires: WiresLike, base_case_dim: int = 4
+) -> tuple[Operator, list[Operator]]:
     """Compute the decomposition of ``u`` into a diagonal, which is returned separately,
     and other operators. Uses recursion, with ``_flag_decomp_two_qubits`` as the base case by
     default. By setting ``base_case_dim=2``, the single-qubit flag decomposition can be used.
@@ -303,9 +307,11 @@ def flag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[
         diagonal, other_data = _flag_decomp_two_qubits(u)
         diag_op = qml.DiagonalQubitUnitary(diagonal, wires)
         other_ops = [
-            qml.RY(other_data[0], wires[0]), qml.RZ(other_data[1], wires[0]),
-            qml.RY(other_data[2], wires[1]), qml.RZ(other_data[3], wires[1]),
-            qml.CNOT(wires), 
+            qml.RY(other_data[0], wires[0]),
+            qml.RZ(other_data[1], wires[0]),
+            qml.RY(other_data[2], wires[1]),
+            qml.RZ(other_data[3], wires[1]),
+            qml.CNOT(wires),
             qml.RX(other_data[4], wires[0]),
             qml.RZ(other_data[5], wires[1]),
             qml.CNOT(wires),
@@ -321,13 +327,21 @@ def flag_decomp(u: np.ndarray, wires: WiresLike, base_case_dim: int=4) -> tuple[
         assert is_unitary(k1) and is_block_diagonal(k1, p)
 
     with qml.queuing.QueuingManager.stop_recording():
-        k0_0_diag_op, k0_0_ops = flag_decomp(k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
-        k0_1_diag_op, k0_1_ops = flag_decomp(k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
+        k0_0_diag_op, k0_0_ops = flag_decomp(
+            k0[:p, :p], wires=wires[1:], base_case_dim=base_case_dim
+        )
+        k0_1_diag_op, k0_1_ops = flag_decomp(
+            k0[p:, p:], wires=wires[1:], base_case_dim=base_case_dim
+        )
         smaller_diag, multiplexer_angles_k0 = balance_diagonal(
             k0_0_diag_op.data[0], k0_1_diag_op.data[0]
         )
-        k1_0_diag_op, k1_0_ops = flag_decomp(np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim)
-        k1_1_diag_op, k1_1_ops = flag_decomp(np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim)
+        k1_0_diag_op, k1_0_ops = flag_decomp(
+            np.diag(smaller_diag) @ k1[:p, :p], wires=wires[1:], base_case_dim=base_case_dim
+        )
+        k1_1_diag_op, k1_1_ops = flag_decomp(
+            np.diag(smaller_diag) @ k1[p:, p:], wires=wires[1:], base_case_dim=base_case_dim
+        )
         multiplexer_angles_a = -2 * np.arctan2(np.diag(a, k=p), np.diag(a)[:p])
 
         diagonal = np.concatenate([k1_0_diag_op.data[0], k1_1_diag_op.data[0]])

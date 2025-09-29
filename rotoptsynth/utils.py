@@ -116,7 +116,10 @@ _rotation_counts = {
 def count_rotation_angles(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""
     assert all(has_unit_determinant(op.data[0]) for op in ops if isinstance(op, qml.QubitUnitary))
-    return sum((entry(op) if callable(entry := _rotation_counts[type(op)]) else entry) for op in ops)
+    return sum(
+        (entry(op) if callable(entry := _rotation_counts[type(op)]) else entry) for op in ops
+    )
+
 
 _cnot_counts = {
     qml.CNOT: 1,
@@ -125,6 +128,7 @@ _cnot_counts = {
     SelectSU2: lambda op: 3 * 2 ** (len(op.wires) - 1),
     qml.DiagonalQubitUnitary: lambda op: 2 ** len(op.wires) - 2,
 }
+
 
 def count_cnots(ops):
     """Count how many rotation angles parametrize a give sequence of operators."""

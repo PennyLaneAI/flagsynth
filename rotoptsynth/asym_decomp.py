@@ -41,9 +41,12 @@ of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 def _rx_rz(theta, phi):
     """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
     ordering ``[0, 1]``."""
-    rx = np.array([[np.cos(theta / 2), -1j * np.sin(theta / 2)], [-1j * np.sin(theta / 2), np.cos(theta / 2)]])
+    rx = np.array(
+        [[np.cos(theta / 2), -1j * np.sin(theta / 2)], [-1j * np.sin(theta / 2), np.cos(theta / 2)]]
+    )
     rz = np.array([[np.exp(-0.5j * phi), 0], [0, np.exp(0.5j * phi)]])
     return np.kron(rx, rz)
+
 
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
@@ -244,9 +247,7 @@ def asymmetric_two_qubit_decomp(u):
     a, b, c, d = _prop_iv3(_u, v)
     if validation_enabled():
         assert np.allclose(np.kron(a, b) @ v @ np.kron(c, d), _u)
-        assert np.allclose(
-            u_mod, np.kron(a, b) @ v @ np.kron(c, d) @ _cnot @ _rz_1(-psi) @ _cnot
-        )
+        assert np.allclose(u_mod, np.kron(a, b) @ v @ np.kron(c, d) @ _cnot @ _rz_1(-psi) @ _cnot)
 
     # Data for output ops
     # RZ_1, CX, SU(2), SU(2), CX, RX_0, RZ_1 CX, SU(2), SU(2), GlobalPhase
