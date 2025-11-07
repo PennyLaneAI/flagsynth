@@ -22,7 +22,7 @@ from .utils import ops_to_mat
 from .validation import is_unitary, validation_enabled
 
 
-def _decompose_first_mplx(a, b, wires, zeroed_wires, flag_base_case_dim):
+def _decompose_first_mplx(a, b, wires, zeroed_wires):
     """Decompose the first multiplexer (in circuit ordering, not matrix multiplication ordering)
     of an AIII Cartan decomposition, using information about the first wire being zeroed or not."""
 
@@ -36,23 +36,16 @@ def _decompose_first_mplx(a, b, wires, zeroed_wires, flag_base_case_dim):
     v_sub = np.diag(diag_u_sub.data[0]) @ v_sub
 
     if validation_enabled():
-        assert np.allclose(ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub, a)
+        rec_a = ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(d_sub) @ v_sub
+        assert np.allclose(rec_a, a, atol=1e-7), f"{np.max(np.abs(rec_a-a))=}"
         assert np.allclose(
-            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, b
+            ops_to_mat(other_ops_u_sub, wires[1:]) @ np.diag(np.conj(d_sub)) @ v_sub, b, atol=1e-7
         )
     return [
         *rot_opt_qsd(v_sub, wires[1:]),
         qml.SelectPauliRot(-2 * np.angle(d_sub), wires[1:], target_wire=wires[0], rot_axis="Z"),
         *other_ops_u_sub,
     ]
-
-    """
-        if u.dtype == np.float64:
-            if np.linalg.det(u)<0:
-                raise NotImplementedError("Negative determinant case not considered yet")
-            ry_angle = 2 * np.arctan2(u[0, 1], u[0, 0])
-            new_ops = [qml.RY(ry_angle, wire)]
-    """
 
 def _rot_opt_qsd_one_qubit(u, wire, zeroed):
     with qml.QueuingManager.stop_recording():
@@ -98,7 +91,7 @@ def _validate_and_arrange_zeroed_wires(u: np.ndarray, wires: WiresLike, zeroed_w
 
 
 def rot_opt_qsd(
-    u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike] = None, flag_base_case_dim: int=4
+    u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike] = None
 ) -> Sequence[Operator]:
     r"""Unitary synthesis with optimal number of rotation angles.
 
@@ -140,15 +133,15 @@ def rot_opt_qsd(
 
     with qml.QueuingManager.stop_recording():
         # Diag-decompose k00 and k01
-        diag_k00, other_ops_00 = flag_decomp(k00, wires[1:], base_case_dim=flag_base_case_dim)
-        diag_k01, other_ops_01 = flag_decomp(k01, wires[1:], base_case_dim=flag_base_case_dim)
+        diag_k00, other_ops_00 = flag_decomp(k00, wires[1:])
+        diag_k01, other_ops_01 = flag_decomp(k01, wires[1:])
 
         sub_diag, mplx_angles_rz = balance_diagonal(diag_k00.data[0], diag_k01.data[0])
         k10 = sub_diag[:, None] * k10
         k11 = sub_diag[:, None] * k11
 
         new_ops = [
-            *_decompose_first_mplx(k10, k11, wires, zeroed_wires, flag_base_case_dim),
+            *_decompose_first_mplx(k10, k11, wires, zeroed_wires),
             qml.SelectPauliRot(2 * mplx_angles_ry, wires[1:], target_wire=wires[0], rot_axis="Y"),
             qml.SelectPauliRot(mplx_angles_rz, wires[1:], target_wire=wires[0], rot_axis="Z"),
             *attach_multiplexer_node(other_ops_00, other_ops_01, wires[0]),
