@@ -220,7 +220,6 @@ def bdi_kak(mat):
 
 
 def iterative_cossin_decomposition(u, level=0, num_wires=None):
-    #print(*u, sep="\n")
     if level == 0:
         num_wires = int(np.log2(len(u[0][0][0])))
     elif level == num_wires-1:
@@ -234,16 +233,7 @@ def iterative_cossin_decomposition(u, level=0, num_wires=None):
             assert len(data) == 2**(num_wires - 1)
             assert all(np.shape(mat)==(2, 2) for mat in data)
 
-            cosines, minus_sines = zip(*[mat[0] for mat in data])
-            angles = -2 * np.arctan2(minus_sines, cosines)
-            #print(f"old: {angles}")
-            #for mat in data:
-                #print(f"{np.linalg.det(mat)=}")
-                #post, ang, pre = bdi_kak(mat)
-                #print(f"{post=}")
-                #print(f"{pre=}")
             angles = 2 * np.concatenate([bdi_kak(mat)[1] for mat in data])
-            #print(f"new: {angles}")
             new_u.append((angles, mux_wires))
         return new_u
 
@@ -257,20 +247,21 @@ def iterative_cossin_decomposition(u, level=0, num_wires=None):
         before, angles, after = [], [], []
         for mat in data:
             post_blocks, angles_ry, pre_blocks = bdi_kak(mat)
-            post0, post1 = post_blocks
-            pre0, pre1 = pre_blocks
-            A = np.block([[np.diag(np.cos(angles_ry)), np.diag(-np.sin(angles_ry))],[np.diag(np.sin(angles_ry)), np.diag(np.cos(angles_ry))]])
-            assert np.allclose(
-                np.block([[post0, 0*post0],[0*post0, post1]]) @
-                A @
-                np.block([[pre0, 0*pre0],[0*pre0, pre1]]),
-                mat
-            )
-            with qml.QueuingManager.stop_recording():
-                op_mat = qml.matrix(qml.tape.QuantumScript([
-                    qml.SelectPauliRot(2 * angles_ry, range(1, num_wires), 0, rot_axis="Y")
-                ]), wire_order=range(num_wires))
-                assert np.allclose(A, op_mat)
+            if validation_enabled():
+                post0, post1 = post_blocks
+                pre0, pre1 = pre_blocks
+                A = np.block([[np.diag(np.cos(angles_ry)), np.diag(-np.sin(angles_ry))],[np.diag(np.sin(angles_ry)), np.diag(np.cos(angles_ry))]])
+                assert np.allclose(
+                    np.block([[post0, 0*post0],[0*post0, post1]]) @
+                    A @
+                    np.block([[pre0, 0*pre0],[0*pre0, pre1]]),
+                    mat
+                )
+                with qml.QueuingManager.stop_recording():
+                    op_mat = qml.matrix(qml.tape.QuantumScript([
+                        qml.SelectPauliRot(2 * angles_ry, range(level+1, num_wires), level, rot_axis="Y")
+                    ]), wire_order=range(level, num_wires))
+                    assert np.allclose(A, op_mat)
             before.extend(pre_blocks)
             angles.append(2 * angles_ry)
             after.extend(post_blocks)
@@ -294,10 +285,8 @@ def filter_by_zeroed_qubit(angles, mux_wires, target, zeroed_qubits):
 
 def real_rot_opt_qsd(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike]=None):
 
-    #print(f"Determinant: {np.linalg.det(u)}")
-    # TODO
-    u[0] *= np.linalg.det(u)
-    #print(f"Determinant: {np.linalg.det(u)}")
+    #u[0] *= np.linalg.det(u)
+    assert np.linalg.det(u) > 0 # # todo: Only SO is supported at the moment
 
     if zeroed_wires is None:
         zeroed_wires = []
@@ -313,7 +302,6 @@ def real_rot_opt_qsd(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[Wir
         assert is_unitary(u)
 
     circuit_data = iterative_cossin_decomposition([([u],[])])
-    #print(*circuit_data, sep="\n")
     ops = []
     zeroed_qubits = range(len(zeroed_wires))
     for angles, mux_wires in circuit_data:
@@ -334,17 +322,9 @@ def real_rot_opt_qsd(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[Wir
         mat_sliced = mat.copy().reshape((2,) * (2*len(wires)))
         u_sliced = u.copy().reshape((2,) * (2*len(wires)))
         zeroed_ids = sorted([wires.index(w) for w in zeroed_wires], reverse=True)
-        #print(ops)
-        #for op in ops:
-            #print(qml.matrix(qml.tape.QuantumScript([op]), wire_order=wires).real)
-        #print(f"{wires=}, {zeroed_wires=}")
-        #print(zeroed_ids)
-        #print(mat)
-        #print(u)
         for idx in zeroed_ids:
             mat_sliced = np.take(mat_sliced, 0, len(wires) + idx)
             u_sliced = np.take(u_sliced, 0, len(wires) + idx)
-            #print(mat_sliced.shape)
 
         assert np.allclose(mat_sliced, u_sliced), f"{mat_sliced}\n{u_sliced}"
     return ops
