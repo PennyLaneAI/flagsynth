@@ -278,7 +278,7 @@ def filter_by_zeroed_qubit(angles, mux_wires, target, zeroed_qubits):
 
 def real_rot_opt_qsd(u: np.ndarray, wires: WiresLike, zeroed_wires: Optional[WiresLike]=None):
 
-    #u[0] *= np.linalg.det(u)
+    u[:, -1] *= np.linalg.det(u)
     assert np.linalg.det(u) > 0 # # todo: Only SO is supported at the moment
 
     if zeroed_wires is None:
