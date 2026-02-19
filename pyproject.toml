@@ -18,7 +18,7 @@ requires-python = ">=3.11"
 dependencies = [
     "pennylane",
     "jupyter",
-    "jax==0.6.0",
+    "jax",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
