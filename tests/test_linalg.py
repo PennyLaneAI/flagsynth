@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from scipy.stats import unitary_group, special_ortho_group
 import pennylane as qml
-from rotoptsynth.linalg import csd, de_mux, balance_diagonal
+from rotoptsynth.linalg import csd, de_mux, balance_diagonal, mottonen, merge_diagonals
 
 class TestCsd:
     """Tests for cosine-sine decomposition in `csd`."""
@@ -72,7 +72,7 @@ class TestDeMux:
 class TestBalanceDiagonal:
     """Tests for `balance_diagonal`."""
 
-    @pytest.mark.parametrize("n, target_wire", [(2, 0), (2, 1), (3, 0), (3, 1), (3, 2)])
+    @pytest.mark.parametrize("n, target_wire", [(1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2)])
     def test_basic(self, n, target_wire):
         """Test basic usage of the function."""
         N = 2**n
@@ -82,8 +82,33 @@ class TestBalanceDiagonal:
         ctrls = [i for i in range(n) if i != target_wire]
         rz_op = qml.SelectPauliRot(theta_Z, ctrls, target_wire, rot_axis="Z")
         rz_mat = np.diag(qml.matrix(rz_op, wire_order=range(n)))
-        diag_op = qml.DiagonalQubitUnitary(Delta_prime, wires=ctrls)
-        diag_op_mat = np.diag(qml.matrix(diag_op, wire_order=range(n)))
+        if n == 1:
+            diag_op_mat = Delta_prime
+        else:
+            diag_op = qml.DiagonalQubitUnitary(Delta_prime, wires=ctrls)
+            diag_op_mat = np.diag(qml.matrix(diag_op, wire_order=range(n)))
         assert np.allclose(Delta, rz_mat * diag_op_mat)
 
+
+class TestMottonen:
+    """Tests for multiplexed rotations (aka `qml.SelectPauliRot`) decomposition by
+    Mottonen et al."""
+
+    @pytest.mark.parametrize("seed", [825, 1285, 263, 42])
+    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5])
+    @pytest.mark.parametrize("axis", "YZ")
+    def test_basic(self, seed, k, axis):
+        """Test basic usage."""
+        np.random.seed(seed)
+        theta = np.random.random(2**k)
+
+        with qml.queuing.AnnotatedQueue() as q:
+            decomp = mottonen(theta, controls=list(range(k)), target=k, axis=axis)
+
+        assert len(q.queue) == 0
+        decomp_mat =qml.matrix(decomp, wire_order=range(k+1))
+
+        individual_mats = [getattr(qml, f"R{axis}")(th, 0).matrix() for th in theta]
+        expected = qml.math.block_diag(individual_mats)
+        assert np.allclose(expected, decomp_mat)
 
