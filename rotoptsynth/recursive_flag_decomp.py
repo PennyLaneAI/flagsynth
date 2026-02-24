@@ -8,7 +8,7 @@ from pennylane.math.decomposition import zyz_rotation_angles
 from pennylane.operation import Operation
 
 from .asymmetric_decomp import asymmetric_decomp
-from .linalg import balance_diagonal, csd, de_mux, merge_diagonals, mottonen, re_and_de_mux
+from .linalg import balance_diagonal, csd, de_mux, mottonen, re_and_de_mux, expand_diagonal_matrix
 
 
 @qml.QueuingManager.stop_recording()
@@ -212,12 +212,10 @@ def _merge_diag_into_mux(op, main_diag, main_diag_wires):
     main_diag_wires.pop(balance_idx)
     theta, main_diag = balance_diagonal(main_diag, balance_idx)
     missing_ctrls = [w for w in op.wires[:-1] if w not in main_diag_wires]
-    theta_broad = np.diag(
-        qml.math.expand_matrix(
-            np.diag(np.kron(np.ones(2 ** len(missing_ctrls)), theta)),
-            wires=missing_ctrls + main_diag_wires,
-            wire_order=op.wires[:-1],
-        )
+    theta_broad = expand_diagonal_matrix(
+        np.kron(np.ones(2 ** len(missing_ctrls)), theta),
+        wires=missing_ctrls + main_diag_wires,
+        wire_order=op.wires[:-1],
     )
     op = MultiplexedFlag(op.data[0] + theta_broad, op.data[1], op.wires)
     return op, main_diag, main_diag_wires
@@ -258,20 +256,14 @@ def decompose_mux_single_qubit_flags(ops):
             assert all(op.wires[1] not in d_wires for d_wires in main_diag_wires)
         elif isinstance(op, (qml.RZ, qml.RY)):
             assert all(op.wires[0] not in d_wires for d_wires in main_diag_wires)
-        elif isinstance(op, qml.GlobalPhase):
-            pass
-            # main_diag *= np.exp(-1j*op.data[0])
-            # continue
         else:
             raise NotImplementedError(f"{op=}")
         new_ops.append(op)
 
     wires = sorted(tape.wires)
-    main_diag = np.ones(2 ** len(wires))
+    main_diag = np.ones(2 ** len(wires), dtype=complex)
     for d, d_wires in zip(main_diags, main_diag_wires, strict=True):
-        main_diag = main_diag * np.diag(
-            qml.math.expand_matrix(np.diag(d), wires=d_wires, wire_order=wires)
-        )
+        main_diag *= expand_diagonal_matrix(d, d_wires, wires)
     return new_ops, main_diag
 
 
@@ -337,7 +329,7 @@ def mux_ops(ops: list, controls: list) -> list:
 
 
 @qml.QueuingManager.stop_recording()
-def mux_multi_qubit_decomp(mats, mux_wires, target_wires, n_b, break_down):
+def mux_multi_qubit_decomp(mats: list[np.ndarray], mux_wires: list, target_wires: list, n_b: int, break_down: bool):
     """Decompose a multiplexed multi-qubit unitary via flag circuits."""
     if n_b == len(target_wires):
         base_case_fn = one_qubit_flag_decomp if n_b == 1 else two_qubit_flag_decomp
@@ -353,26 +345,22 @@ def mux_multi_qubit_decomp(mats, mux_wires, target_wires, n_b, break_down):
     K00, K01, theta_Y, K10, K11 = zip(*[csd(mat) for mat in mats])
     K0 = list(chain.from_iterable(zip(K00, K01)))
     K1 = list(chain.from_iterable(zip(K10, K11)))
+    new_mux = target_wires[:1]
+    new_targets = target_wires[1:]
     ops1, diag1 = mux_multi_qubit_decomp(
-        K1, mux_wires + target_wires[:1], target_wires[1:], n_b, break_down
+        K1, mux_wires + new_mux, new_targets, n_b, break_down
     )
     theta_Y = np.concatenate(theta_Y)
     theta_Z, diag_mid = balance_diagonal(diag1, len(mux_wires))
-    F_A = [MultiplexedFlag(theta_Z, theta_Y, mux_wires + target_wires[1:] + target_wires[:1])]
-    diag_mid = np.diag(
-        qml.math.expand_matrix(
-            np.diag(diag_mid),
-            wires=mux_wires + target_wires[1:],
-            wire_order=mux_wires + target_wires,
-        )
-    )
+    F_A = [MultiplexedFlag(theta_Z, theta_Y, mux_wires + new_targets + new_mux)]
+    diag_mid = expand_diagonal_matrix(diag_mid, mux_wires+new_targets, mux_wires+target_wires)
     if break_down:
         F_A, diag_a = decompose_mux_single_qubit_flags(F_A)
         diag_mid = diag_mid * diag_a
     sub_size = len(K0[0])
     K0 = [k * diag_mid[sub_size * i : sub_size * (i + 1)] for i, k in enumerate(K0)]
     ops0, diag0 = mux_multi_qubit_decomp(
-        K0, mux_wires + target_wires[:1], target_wires[1:], n_b, break_down
+        K0, mux_wires + new_mux, new_targets, n_b, break_down
     )
 
     return ops1 + F_A + ops0, diag0

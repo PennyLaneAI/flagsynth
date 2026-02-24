@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from scipy.stats import unitary_group, special_ortho_group
 import pennylane as qml
-from rotoptsynth.linalg import csd, de_mux, balance_diagonal, mottonen, merge_diagonals
+from rotoptsynth.linalg import csd, de_mux, balance_diagonal, mottonen
 
 
 class TestCsd:
