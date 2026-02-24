@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.ops.functions import assert_valid
 from pennylane.wires import Wires
 
-from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp, recursive_flag_decomp_cliff_rz
+from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp, recursive_flag_decomp_cliff_rz, recursive_flag_decomp
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
@@ -150,8 +150,8 @@ class TestMuxOps:
 
         with qml.queuing.AnnotatedQueue() as q:
             new_ops = mux_ops(ops, controls)
-
         assert len(q.queue) == 0
+
         assert all(isinstance(new_op, type(op0)) for new_op, op0 in zip(new_ops, ops[0], strict=True))
 
         individual_mats = [qml.matrix(_ops, wire_order=targets) for _ops in ops]
@@ -175,12 +175,10 @@ class TestDecomposeMuxSingleQubitFlags:
 
         with qml.queuing.AnnotatedQueue() as q:
             ops, D = _decompose_mux_single_qubit_flag(op)
+        assert len(q.queue) == 0 # 4 rotations and a CZ, no diagonal queued
 
-        assert len(q.queue) == 5 # 4 rotations and a CZ, no diagonal queued
         out_mat = np.diag(D) @ qml.matrix(ops, wire_order=wires)
-        out_mat2 = np.diag(D) @ qml.matrix(q.queue, wire_order=wires)
         assert np.allclose(op_mat, out_mat)
-        assert np.allclose(op_mat, out_mat2)
 
     @pytest.mark.parametrize("wires", [[0, 1, 2], [1, 2, 0], [-3, "A", 0]])
     @pytest.mark.parametrize("seed", [825, 1285, 263, 42])
@@ -193,12 +191,10 @@ class TestDecomposeMuxSingleQubitFlags:
 
         with qml.queuing.AnnotatedQueue() as q:
             ops, D = _decompose_mux_single_qubit_flag(op)
+        assert len(q.queue) == 0 # 8 rotations and 3 CZs, no diagonal queued
 
-        assert len(q.queue) == 11 # 8 rotations and 3 CZs, no diagonal queued
         out_mat = np.diag(D) @ qml.matrix(ops, wire_order=wires)
-        out_mat2 = np.diag(D) @ qml.matrix(q.queue, wire_order=wires)
         assert np.allclose(op_mat, out_mat)
-        assert np.allclose(op_mat, out_mat2)
 
     @pytest.mark.parametrize("k", [3, 4, 5, 6])
     @pytest.mark.parametrize("seed", [825, 1285, 263, 42])
@@ -212,12 +208,10 @@ class TestDecomposeMuxSingleQubitFlags:
 
         with qml.queuing.AnnotatedQueue() as q:
             ops, D = _decompose_mux_single_qubit_flag(op)
+        assert len(q.queue) == 0
 
-        assert len(q.queue) == 2**(k+1) + 2**k - 1
         out_mat = np.diag(D) @ qml.matrix(ops, wire_order=wires)
-        out_mat2 = np.diag(D) @ qml.matrix(q.queue, wire_order=wires)
         assert np.allclose(op_mat, out_mat)
-        assert np.allclose(op_mat, out_mat2)
 
 class TestMuxMultiQubitDecomp:
     """Test ``mux_multi_qubit_decomp``."""
@@ -225,12 +219,15 @@ class TestMuxMultiQubitDecomp:
     @pytest.mark.parametrize("seed", [5112, 8622, 862])
     @pytest.mark.parametrize("num_controls", [1, 2, 3, 4])
     @pytest.mark.parametrize("n_b", [1, 2])
-    def test_two_qubit_unitaries(self, num_controls, seed, n_b):
+    def test_two_qubit_unitaries_broken_down(self, num_controls, seed, n_b):
         """Test the base case of multiplexed two-qubit unitaries."""
         mats = unitary_group.rvs(4, size=2**num_controls, random_state=seed)
         controls = list(range(num_controls))
         targets = list(range(num_controls, num_controls+2))
-        ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b)
+
+        with qml.queuing.AnnotatedQueue() as q:
+            ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b, break_down=True)
+        assert len(q.queue) == 0
 
         in_mat = qml.math.block_diag(mats)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
@@ -249,12 +246,15 @@ class TestMuxMultiQubitDecomp:
     @pytest.mark.parametrize("seed", [512, 8362])
     @pytest.mark.parametrize("num_controls, num_targets", [(1, 3), (1, 4), (2, 3), (2, 4), (3, 3), (4, 3)])
     @pytest.mark.parametrize("n_b", [1, 2])
-    def test_multi_qubit_unitaries(self, num_controls, num_targets, seed, n_b):
+    def test_multi_qubit_unitaries_broken_down(self, num_controls, num_targets, seed, n_b):
         """Test the base case of multiplexed two-qubit unitaries."""
         mats = unitary_group.rvs(2**num_targets, size=2**num_controls, random_state=seed)
         controls = list(range(num_controls))
         targets = list(range(num_controls, num_controls+num_targets))
-        ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=n_b)
+
+        with qml.queuing.AnnotatedQueue() as q:
+            ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=n_b, break_down=True)
+        assert len(q.queue) == 0
 
         tape = qml.tape.QuantumScript(ops)
         in_mat = qml.math.block_diag(mats)
@@ -270,6 +270,44 @@ class TestMuxMultiQubitDecomp:
         else:
             exp_num_cnots = (2**n - 1) * (2**(n-1+k)-1)
         assert len(ops) - num_rots == exp_num_cnots
+
+    @pytest.mark.parametrize("seed", [5112, 8622, 862])
+    @pytest.mark.parametrize("num_controls", [1, 2, 3, 4])
+    def test_two_qubit_unitaries_not_broken_down(self, num_controls, seed):
+        """Test the base case of multiplexed two-qubit unitaries."""
+        mats = unitary_group.rvs(4, size=2**num_controls, random_state=seed)
+        controls = list(range(num_controls))
+        targets = list(range(num_controls, num_controls+2))
+
+        with qml.queuing.AnnotatedQueue() as q:
+            ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=1, break_down=False)
+        assert len(q.queue) == 0
+
+        in_mat = qml.math.block_diag(mats)
+        rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
+        assert np.allclose(rec_mat, in_mat)
+        assert len(ops) == 3
+        assert all(isinstance(op, MultiplexedFlag) for op in ops)
+
+    @pytest.mark.parametrize("seed", [512, 8362])
+    @pytest.mark.parametrize("num_controls, num_targets", [(1, 3), (1, 4), (2, 3), (2, 4), (3, 3), (4, 3)])
+    def test_multi_qubit_unitaries_not_broken_down(self, num_controls, num_targets, seed):
+        """Test the base case of multiplexed two-qubit unitaries."""
+        mats = unitary_group.rvs(2**num_targets, size=2**num_controls, random_state=seed)
+        controls = list(range(num_controls))
+        targets = list(range(num_controls, num_controls+num_targets))
+
+        with qml.queuing.AnnotatedQueue() as q:
+            ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=1, break_down=False)
+        assert len(q.queue) == 0
+
+        tape = qml.tape.QuantumScript(ops)
+        in_mat = qml.math.block_diag(mats)
+        rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
+        assert np.allclose(rec_mat, in_mat)
+        assert len(ops) == 2**num_targets - 1
+        assert all(isinstance(op, MultiplexedFlag) for op in ops)
+
 
 class TestRecursiveFlagDecompCliffRz:
     """Test the main recursive flag decomposition function."""
@@ -301,3 +339,23 @@ class TestRecursiveFlagDecompCliffRz:
             exp_num_cnots = (2**n - 1) * (2**(n-1)-1)
 
         assert len(ops) - num_rots == exp_num_cnots
+
+
+class TestRecursiveFlagDecompCliffRz:
+    """Test the main recursive flag decomposition function."""
+
+    @pytest.mark.parametrize("seed", [932, 2185, 752])
+    @pytest.mark.parametrize("num_targets", [2, 3, 4, 5])
+    def test_main_usage(self, seed, num_targets):
+        """Test main usage."""
+        targets = list(range(num_targets))
+        V = unitary_group.rvs(2**num_targets, random_state=seed)
+        with qml.queuing.AnnotatedQueue() as q:
+            ops = recursive_flag_decomp(V, targets)
+
+        assert q.queue == ops
+        rec_mat = qml.matrix(ops, wire_order=targets)
+        assert np.allclose(rec_mat, V)
+        assert len(ops) == 2**num_targets
+        assert all(isinstance(op, MultiplexedFlag) for op in ops[:-1])
+        assert isinstance(ops[-1], qml.DiagonalQubitUnitary)
