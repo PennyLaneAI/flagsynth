@@ -98,7 +98,7 @@ class MultiplexedFlag(Operation):
         return HackyString("◑" * (len(self.wires) - 1) + "⚑")
 
     @staticmethod
-    def compute_decomposition(theta_z, theta_y, wires): #pylint: disable=arguments-differ
+    def compute_decomposition(theta_z, theta_y, wires):  # pylint: disable=arguments-differ
         if len(wires) == 1:
             return [qml.RZ(theta_z[0], wires), qml.RY(theta_y[0], wires)]
 

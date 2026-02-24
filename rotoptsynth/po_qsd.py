@@ -1,5 +1,6 @@
 """This module implements the main function for the parameter-optimal Quantum
 Shannon Decomposition."""
+
 import numpy as np
 import pennylane as qml
 
@@ -17,8 +18,7 @@ def _two_qubit_unitary(matrix, wires):
 
 
 def po_qsd(matrix: np.ndarray, wires: list) -> list:
-    """Implements the Parameter-Optimal Quantum Shannon Decomposition (PO-QSD).
-    """
+    """Implements the Parameter-Optimal Quantum Shannon Decomposition (PO-QSD)."""
     n = len(wires)
     assert matrix.shape == (2**n, 2**n)
 
