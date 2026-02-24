@@ -20,6 +20,8 @@ dependencies = [
     "jupyter",
     "jax",
     "pytest",
+    "matplotlib",
+    "tqdm",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
