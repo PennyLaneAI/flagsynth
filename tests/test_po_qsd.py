@@ -4,6 +4,7 @@ from scipy.stats import unitary_group
 import pennylane as qml
 from rotoptsynth.po_qsd import po_qsd
 
+
 class TestPoQsd:
     """Tests for the main function po_qsd."""
 
@@ -21,10 +22,8 @@ class TestPoQsd:
         num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
         num_cnots = sum(isinstance(op, (qml.CNOT, qml.CZ)) for op in ops)
         num_gphase = sum(isinstance(op, qml.GlobalPhase) for op in ops)
-        exp_num_cnots = 4**n//2-3*(n+2)*2**n//8+n-1
+        exp_num_cnots = 4**n // 2 - 3 * (n + 2) * 2**n // 8 + n - 1
 
         assert num_rots == 4**n - 1
         assert num_gphase == 1
         assert num_cnots == exp_num_cnots
-
-

@@ -4,6 +4,7 @@ from scipy.stats import unitary_group, special_ortho_group
 import pennylane as qml
 from rotoptsynth.linalg import csd, de_mux, balance_diagonal, mottonen, merge_diagonals
 
+
 class TestCsd:
     """Tests for cosine-sine decomposition in `csd`."""
 
@@ -16,19 +17,23 @@ class TestCsd:
         K00, K01, theta_Y, K10, K11 = csd(V)
 
         for K in [K00, K01, K10, K11]:
-            assert K.shape == (N//2, N//2)
-            assert np.allclose(K @ K.conj().T, np.eye(N//2))
+            assert K.shape == (N // 2, N // 2)
+            assert np.allclose(K @ K.conj().T, np.eye(N // 2))
 
-        zeros = np.zeros((N//2, N//2))
+        zeros = np.zeros((N // 2, N // 2))
         K0 = np.block([[K00, zeros], [zeros, K01]])
         K1 = np.block([[K10, zeros], [zeros, K11]])
         A_op = qml.SelectPauliRot(theta_Y, control_wires=range(1, n), target_wire=0, rot_axis="Y")
         A = qml.matrix(A_op, wire_order=range(n))
         assert np.allclose(K0 @ A @ K1, V)
 
-    @pytest.mark.filterwarnings("ignore:invalid value encountered") # special_ortho_group.rvs sometimes warns
-    @pytest.mark.filterwarnings("ignore:overflow encountered") # special_ortho_group.rvs sometimes warns
-    @pytest.mark.filterwarnings("ignore:divide by zero") # special_ortho_group.rvs sometimes warns
+    @pytest.mark.filterwarnings(
+        "ignore:invalid value encountered"
+    )  # special_ortho_group.rvs sometimes warns
+    @pytest.mark.filterwarnings(
+        "ignore:overflow encountered"
+    )  # special_ortho_group.rvs sometimes warns
+    @pytest.mark.filterwarnings("ignore:divide by zero")  # special_ortho_group.rvs sometimes warns
     @pytest.mark.parametrize("n", [1, 2, 3, 4, 5])
     def test_orthogonal(self, n):
         """Test basic usage with orthogonal matrices."""
@@ -38,11 +43,11 @@ class TestCsd:
         K00, K01, theta_Y, K10, K11 = csd(V)
 
         for K in [K00, K01, K10, K11]:
-            assert K.shape == (N//2, N//2)
+            assert K.shape == (N // 2, N // 2)
             assert K.dtype == np.float64
-            assert np.allclose(K @ K.T, np.eye(N//2))
+            assert np.allclose(K @ K.T, np.eye(N // 2))
 
-        zeros = np.zeros((N//2, N//2))
+        zeros = np.zeros((N // 2, N // 2))
         K0 = np.block([[K00, zeros], [zeros, K01]])
         K1 = np.block([[K10, zeros], [zeros, K11]])
         A_op = qml.SelectPauliRot(theta_Y, control_wires=range(1, n), target_wire=0, rot_axis="Y")
@@ -67,10 +72,13 @@ class TestDeMux:
         zeros = np.zeros((N, N))
         M0 = np.block([[M0, zeros], [zeros, M0]])
         M1 = np.block([[M1, zeros], [zeros, M1]])
-        A_op = qml.SelectPauliRot(theta_Z, control_wires=range(1, n+1), target_wire=0, rot_axis="Z")
-        A = qml.matrix(A_op, wire_order=range(n+1))
+        A_op = qml.SelectPauliRot(
+            theta_Z, control_wires=range(1, n + 1), target_wire=0, rot_axis="Z"
+        )
+        A = qml.matrix(A_op, wire_order=range(n + 1))
         V = np.block([[K0, zeros], [zeros, K1]])
         assert np.allclose(M0 @ A @ M1, V)
+
 
 class TestBalanceDiagonal:
     """Tests for `balance_diagonal`."""
@@ -109,9 +117,8 @@ class TestMottonen:
             decomp = mottonen(theta, controls=list(range(k)), target=k, axis=axis)
 
         assert len(q.queue) == 0
-        decomp_mat =qml.matrix(decomp, wire_order=range(k+1))
+        decomp_mat = qml.matrix(decomp, wire_order=range(k + 1))
 
         individual_mats = [getattr(qml, f"R{axis}")(th, 0).matrix() for th in theta]
         expected = qml.math.block_diag(individual_mats)
         assert np.allclose(expected, decomp_mat)
-

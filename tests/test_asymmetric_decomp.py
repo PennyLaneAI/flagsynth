@@ -6,6 +6,7 @@ import pennylane as qml
 
 from rotoptsynth.asymmetric_decomp import _prop_v2, _gamma, _prop_iv3, asymmetric_decomp
 
+
 def make_unit_det(mat):
     gphase = np.angle(np.linalg.det(mat)) / len(mat)
     mat = np.exp(-1j * gphase) * mat
@@ -27,7 +28,9 @@ class TestPropositions:
 
         assert len(q.queue) == 0
 
-        lhs = qml.CNOT([0, 1]) @ qml.RZ(psi, 1) @ qml.CNOT([0, 1]) @ qml.QubitUnitary(u, wires=[0, 1])
+        lhs = (
+            qml.CNOT([0, 1]) @ qml.RZ(psi, 1) @ qml.CNOT([0, 1]) @ qml.QubitUnitary(u, wires=[0, 1])
+        )
         rhs = qml.CNOT([0, 1]) @ qml.RX(theta, 0) @ qml.RZ(phi, 1) @ qml.CNOT([0, 1])
         lhs = _gamma(qml.matrix(lhs, wire_order=[0, 1]))
         rhs = _gamma(qml.matrix(rhs, wire_order=[0, 1]))
@@ -41,7 +44,7 @@ class TestPropositions:
     def test_prop_iv3(self, seed):
         """Test Proposition IV.3, implemented in `_prop_iv3`."""
         v = make_unit_det(unitary_group.rvs(4, random_state=seed))
-        abcd = unitary_group.rvs(2, size=4, random_state=seed+2)
+        abcd = unitary_group.rvs(2, size=4, random_state=seed + 2)
         a_in, b_in, c_in, d_in = [make_unit_det(mat) for mat in abcd]
         u = np.kron(a_in, b_in) @ v @ np.kron(c_in, d_in)
 
@@ -67,7 +70,8 @@ def asymmetric_circuit(a, b, c, d, alpha, psi, theta, phi):
     qml.QubitUnitary(b, 1)
     qml.CNOT([0, 1])
     qml.RZ(psi, 1)
-    qml.GlobalPhase(-alpha) # Differing convention in PennyLane for global phase
+    qml.GlobalPhase(-alpha)  # Differing convention in PennyLane for global phase
+
 
 class TestAsymmetricDecomp:
     """Tests for `asymmetric_decomp` itself."""

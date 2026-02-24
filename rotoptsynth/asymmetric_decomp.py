@@ -1,5 +1,6 @@
-import numpy as np
 from functools import partial
+
+import numpy as np
 from pennylane import CNOT, RX, RZ, Y, matrix
 from pennylane.math.decomposition import su2su2_to_tensor_products
 
@@ -109,6 +110,7 @@ def _prop_v2(u):
     theta, phi = _v2_angles(evals)
     return -psi, -theta, -phi
 
+
 def _prop_iv3(u, v):
     r"""Given two two-qubit matrices :math:`U, V` that are guaranteed to be equal up to
     multiplication by single-qubit unitaries on either side, find the single-qubit
@@ -159,9 +161,10 @@ def _prop_iv3(u, v):
 
     return a, b, c, d
 
+
 def asymmetric_decomp(v):
     """Compute the asymmetric decomposition of a two-qubit unitary matrix."""
-    assert v.shape == (4, 4), f'{v.shape=}, expected (4, 4)'
+    assert v.shape == (4, 4), f"{v.shape=}, expected (4, 4)"
     v_mod = _cnot @ v
     alpha = np.angle(np.linalg.det(v_mod)) / 4
     v_mod = np.exp(-1j * alpha) * v_mod
@@ -172,4 +175,3 @@ def asymmetric_decomp(v):
     a, b, c, d = _prop_iv3(v_prime, w)
 
     return [a, b, c, d, alpha, -psi, theta, phi]
-

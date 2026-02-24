@@ -1,7 +1,8 @@
 import numpy as np
 import pennylane as qml
-from scipy.linalg import cossin
 from pennylane.templates.state_preparations.mottonen import _uniform_rotation_dagger_ops
+from scipy.linalg import cossin
+
 
 def csd(V: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -28,6 +29,7 @@ def csd(V: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
     theta_Y = 2.0 * theta
 
     return K00, K01, theta_Y, K10, K11
+
 
 def de_mux(K0: np.ndarray, K1: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -68,7 +70,8 @@ def de_mux(K0: np.ndarray, K1: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.n
 
     return M0, theta_Z, M1
 
-def re_and_de_mux(A, B, angles, wires, side: str=None):
+
+def re_and_de_mux(A, B, angles, wires, side: str = None):
     target, *controls = wires
     _cz = qml.CZ([controls[0], target]).matrix(wire_order=wires)
     re_muxed = (
@@ -80,8 +83,9 @@ def re_and_de_mux(A, B, angles, wires, side: str=None):
         re_muxed = re_muxed @ _cz
     if side in ("right", "both"):
         re_muxed = _cz @ re_muxed
-    _N = 2**len(controls)
+    _N = 2 ** len(controls)
     return de_mux(re_muxed[:_N, :_N], re_muxed[_N:, _N:])
+
 
 def balance_diagonal(Delta: np.ndarray, control_wire: int) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -121,7 +125,9 @@ def balance_diagonal(Delta: np.ndarray, control_wire: int) -> tuple[np.ndarray, 
     return theta_Z, Delta_prime
 
 
-def mottonen(theta: np.ndarray, controls: list, target: int, axis: str = 'Y', symmetrized: str | None=None) -> list:
+def mottonen(
+    theta: np.ndarray, controls: list, target: int, axis: str = "Y", symmetrized: str | None = None
+) -> list:
     """
     Implements the standard Möttönen decomposition for a multiplexed rotation.
     Decomposes a k-controlled rotation into exactly 2^k single-qubit rotations
@@ -137,13 +143,13 @@ def mottonen(theta: np.ndarray, controls: list, target: int, axis: str = 'Y', sy
         list: PennyLane operations defining the decomposed multiplexed rotation.
     """
     assert axis in "YZ"
-    gate = qml.RZ if axis=="Z" else qml.RY
+    gate = qml.RZ if axis == "Z" else qml.RY
     # This function uses the other bit ordering
     with qml.QueuingManager.stop_recording():
         ops = _uniform_rotation_dagger_ops(gate, theta, controls[::-1], target)
         if symmetrized is not None:
             assert symmetrized in ("right", "left")
-            mid_idx = len(ops)//2-1
+            mid_idx = len(ops) // 2 - 1
             assert isinstance(ops[mid_idx], qml.CNOT)
             assert isinstance(ops[-1], qml.CNOT)
             assert ops[mid_idx].wires == ops[-1].wires
@@ -153,15 +159,15 @@ def mottonen(theta: np.ndarray, controls: list, target: int, axis: str = 'Y', sy
             sign = 1 if axis == "Z" else -1
 
             first_rot = ops[0]
-            ops[0] = gate(first_rot.data[0]-sign*np.pi/2, first_rot.wires)
+            ops[0] = gate(first_rot.data[0] - sign * np.pi / 2, first_rot.wires)
             last_rot = ops[-1]
-            ops[-1] = gate(last_rot.data[0]+sign*np.pi/2, last_rot.wires)
+            ops[-1] = gate(last_rot.data[0] + sign * np.pi / 2, last_rot.wires)
 
     return ops
 
 
 def merge_diagonals(diag_0, wires_0, diag_1, wires_1):
-    all_wires = sorted(set(wires_0+wires_1))
+    all_wires = sorted(set(wires_0 + wires_1))
     if wires_0:
         diag_0 = np.diag(qml.math.expand_matrix(np.diag(diag_0), wires_0, wire_order=all_wires))
     if wires_1:
