@@ -26,6 +26,9 @@ class TestCsd:
         A = qml.matrix(A_op, wire_order=range(n))
         assert np.allclose(K0 @ A @ K1, V)
 
+    @pytest.mark.filterwarnings("ignore:invalid value encountered") # special_ortho_group.rvs sometimes warns
+    @pytest.mark.filterwarnings("ignore:overflow encountered") # special_ortho_group.rvs sometimes warns
+    @pytest.mark.filterwarnings("ignore:divide by zero") # special_ortho_group.rvs sometimes warns
     @pytest.mark.parametrize("n", [1, 2, 3, 4, 5])
     def test_orthogonal(self, n):
         """Test basic usage with orthogonal matrices."""

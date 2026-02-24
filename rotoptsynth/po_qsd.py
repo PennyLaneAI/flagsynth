@@ -1,7 +1,7 @@
 import numpy as np
 import pennylane as qml
 
-from .recursive_flag_decomp import recursive_flag_decomp
+from .recursive_flag_decomp import recursive_flag_decomp_cliff_rz
 from .linalg import csd, de_mux, re_and_de_mux, mottonen
 
 def two_qubit_unitary(V, wires):
@@ -38,9 +38,9 @@ def po_qsd(V: np.ndarray, wires: list) -> list:
         # theta_y_new to `mottonen` with `axis="Y"`.
         M01_new, theta_y_new, M10_new = re_and_de_mux(M01, M10, theta_y, wires, side="both")
 
-        F_11, Delta_11 = recursive_flag_decomp(M11, controls, n_b=2, selective_demux=True)
-        F_10, Delta_10 = recursive_flag_decomp(M10_new * Delta_11, controls, n_b=2, selective_demux=True)
-        F_01, Delta_01 = recursive_flag_decomp(M01_new * Delta_10, controls, n_b=2, selective_demux=True)
+        F_11, Delta_11 = recursive_flag_decomp_cliff_rz(M11, controls, n_b=2, selective_demux=True)
+        F_10, Delta_10 = recursive_flag_decomp_cliff_rz(M10_new * Delta_11, controls, n_b=2, selective_demux=True)
+        F_01, Delta_01 = recursive_flag_decomp_cliff_rz(M01_new * Delta_10, controls, n_b=2, selective_demux=True)
 
         # Recurse PO-QSD on the final modified M00 block
         C00 = po_qsd(M00 * Delta_01, controls)

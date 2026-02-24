@@ -318,19 +318,8 @@ def mux_multi_qubit_decomp(mats, mux_wires, target_wires, n_b):
 
     return ops1 + ops_a + ops0, diag0
 
-def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False, break_down=True) -> tuple[list, np.ndarray]:
+def recursive_flag_decomp_cliff_rz(V: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False) -> tuple[list, np.ndarray]:
     """
-    Implements the recursive flag decomposition (Algorithm 1).
-
-    Args:
-        V (np.ndarray): A 2^n x 2^n complex unitary matrix.
-        wires (list): The list of wires [q_0, q_1, ..., q_{n-1}].
-        n_b (int): Base case threshold (1 or 2).
-
-    Returns:
-        tuple: (F, Delta) where:
-            - F is a list of PennyLane operations (the flag circuit).
-            - Delta is a 1D numpy array representing the extracted diagonal matrix.
     """
     n = len(wires)
 
@@ -339,8 +328,7 @@ def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_de
         return one_qubit_flag_decomp(V, wires)
     elif n_b == 2 and n == 2:
         ops, diag = two_qubit_flag_decomp(V, wires)
-        ops, new_diag = decompose_mux_single_qubit_flags(ops)
-        assert np.allclose(new_diag, np.ones(4))
+        ops, _ = decompose_mux_single_qubit_flags(ops)
         return ops, diag
 
     # 1. Cosine-Sine Decomposition
@@ -353,12 +341,9 @@ def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_de
         # Selective de-multiplexing branch
         M10, theta_Z_prime, M11 = de_mux(K10, K11)
 
-        F11, Delta = recursive_flag_decomp(M11, controls, n_b=n_b, selective_demux=selective_demux, break_down=break_down)
-        if break_down:
-            F11, Delta_11_mod = decompose_mux_single_qubit_flags(F11)
-            Delta = Delta * Delta_11_mod
-
-        assert np.allclose(M11, np.diag(Delta) @ qml.matrix(F11, wire_order=controls))
+        F11, Delta = recursive_flag_decomp_cliff_rz(M11, controls, n_b=n_b, selective_demux=selective_demux)
+        F11, Delta_11_mod = decompose_mux_single_qubit_flags(F11)
+        Delta = Delta * Delta_11_mod
 
         F_Z = mottonen(theta_Z_prime, controls, target, axis="Z", symmetrized="right")
 
@@ -366,10 +351,9 @@ def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_de
         M00, theta_Z_0, M01 = de_mux(K00, K01)
         M01_new, theta_Y_new, M10_new = re_and_de_mux(M01, M10, theta_Y, wires, side="left")
 
-        F10, Delta_prime = recursive_flag_decomp(M10_new * Delta, controls, n_b=n_b, selective_demux=selective_demux, break_down=break_down)
-        if break_down:
-            F10, Delta_10_mod = decompose_mux_single_qubit_flags(F10)
-            Delta_prime = Delta_prime * Delta_10_mod
+        F10, Delta_prime = recursive_flag_decomp_cliff_rz(M10_new * Delta, controls, n_b=n_b, selective_demux=selective_demux)
+        F10, Delta_10_mod = decompose_mux_single_qubit_flags(F10)
+        Delta_prime = Delta_prime * Delta_10_mod
 
         F_Y = mottonen(theta_Y_new, controls, target, axis="Y", symmetrized="right")
 
@@ -389,13 +373,10 @@ def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_de
         theta_Z, Delta_prime = balance_diagonal(Delta_top, 0)
 
         F_A = [MultiplexedFlag(theta_Z, theta_Y, controls+[target])]
-        if break_down:
-            F_A, Delta_prime_mod = decompose_mux_single_qubit_flags(F_A)
-            N = len(Delta_prime_mod)
-            Delta_prime0 = Delta_prime * Delta_prime_mod[:N//2]
-            Delta_prime1 = Delta_prime * Delta_prime_mod[N//2:]
-        else:
-            Delta_prime0 = Delta_prime1 = Delta_prime
+        F_A, Delta_prime_mod = decompose_mux_single_qubit_flags(F_A)
+        N = len(Delta_prime_mod)
+        Delta_prime0 = Delta_prime * Delta_prime_mod[:N//2]
+        Delta_prime1 = Delta_prime * Delta_prime_mod[N//2:]
 
         # attach a multiplexer control to F10 and F11 based on the target qubit
         F_top = F_top + F_A

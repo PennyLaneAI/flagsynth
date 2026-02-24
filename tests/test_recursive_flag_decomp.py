@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.ops.functions import assert_valid
 from pennylane.wires import Wires
 
-from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp, recursive_flag_decomp
+from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp, recursive_flag_decomp_cliff_rz
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
@@ -271,7 +271,7 @@ class TestMuxMultiQubitDecomp:
             exp_num_cnots = (2**n - 1) * (2**(n-1+k)-1)
         assert len(ops) - num_rots == exp_num_cnots
 
-class TestRecursiveFlagDecomp:
+class TestRecursiveFlagDecompCliffRz:
     """Test the main recursive flag decomposition function."""
 
     @pytest.mark.parametrize("seed", [932, 2185, 752])
@@ -284,7 +284,7 @@ class TestRecursiveFlagDecomp:
             pytest.skip(reason="We never use this scenario.")
         targets = list(range(num_targets))
         V = unitary_group.rvs(2**num_targets, random_state=seed)
-        ops, diag = recursive_flag_decomp(V, targets, n_b, selective_demux)
+        ops, diag = recursive_flag_decomp_cliff_rz(V, targets, n_b, selective_demux)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=targets)
         assert np.allclose(rec_mat, V)
         assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ, qml.CNOT)) for op in ops), f"{set(type(op) for op in ops)}"
