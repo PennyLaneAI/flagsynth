@@ -10,9 +10,9 @@ _cnot = CNOT([0, 1]).matrix()
 """Matrix of a CNOT(0, 1) in its canonical wire ordering."""
 
 
-def _rz_1(theta):
+def _ising_zz(theta):
     """Matrix of an RZ gate acting on the second of two wires."""
-    return np.diag(np.exp([-0.5j * theta, 0.5j * theta, -0.5j * theta, 0.5j * theta]))
+    return np.diag(np.exp([-0.5j * theta, 0.5j * theta, 0.5j * theta, -0.5j * theta]))
 
 
 _yy = matrix(Y(0) @ Y(1), wire_order=[0, 1])
@@ -23,17 +23,11 @@ _magic_basis = np.array([[1, 1j, 0, 0], [0, 0, 1j, 1], [0, 0, 1j, -1], [1, -1j, 
 of Prop. IV.3 in https://arxiv.org/pdf/quant-ph/0308033."""
 
 
-@partial(matrix, wire_order=[0, 1])
-def _rx_rz(theta, phi):
-    """Compute the combined matrix of ``RX(theta, 0) @ RZ(phi, 1)`` w.r.t. wire
-    ordering ``[0, 1]``."""
-    RX(theta, 0)
-    RZ(phi, 1)
-
-
 def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
-    return u @ _yy @ u.T @ _yy
+    # We will apply Y(0)@Y(1) by reordering columns and applying a sign diagonal.
+    perm_yy = np.array([-1, 1, 1, -1])
+    return (u[:,::-1] * perm_yy  @ u.T)[:, ::-1] * perm_yy
 
 
 def _v2_angles(evals):
@@ -103,7 +97,7 @@ def _prop_v2(u):
     psi = np.arctan2(np.sum(t).imag, (t[0] + t[3] - t[1] - t[2]).real)
 
     # Compute the LHS of the equation in Prop. V.2
-    m = _gamma(u.conj().T @ _cnot @ _rz_1(psi) @ _cnot)
+    m = _gamma(u.conj().T @ _ising_zz(psi))
 
     # Compute its eigenvalues and the angles Theta and Phi from the args/angles of those eigvals
     evals = np.linalg.eigvals(m)
@@ -120,7 +114,8 @@ def _prop_iv3(u, v):
 
         U = (a\otimes b) V (c\otimes d).
 
-    This method is described in the proof of Prop. IV.3 of https://arxiv.org/pdf/quant-ph/0308033.
+    This method is described in the proof of Prop. IV.3 of
+    `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__.
 
     Args:
         u (np.ndarray): First two-qubit unitary matrix
@@ -161,17 +156,38 @@ def _prop_iv3(u, v):
 
     return a, b, c, d
 
+@partial(matrix, wire_order=[0, 1])
+def _core_mat(theta, phi):
+    """Compute the combined matrix of
+    ``CNOT([0, 1]) @ RX(theta, 0) @ RZ(phi, 1) @ CNOT([0, 1])`` w.r.t. wire
+    ordering ``[0, 1]``."""
+    CNOT([0, 1])
+    RX(theta, 0)
+    RZ(phi, 1)
+    CNOT([0, 1])
 
-def asymmetric_decomp(v):
-    """Compute the asymmetric decomposition of a two-qubit unitary matrix."""
+def asymmetric_decomp(v: np.ndarray)->list[np.ndarray, float]:
+    """Compute the asymmetric decomposition of a two-qubit unitary matrix from
+    `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
+    as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and
+    in Alg. 3 in particular.
+
+    Args:
+        v (np.ndarray): Two-qubit unitary matrix to decompose
+
+    Returns:
+        list[np.ndarray, float]: Numerical data of the decomposition, as described in Alg. 3
+        of Kottmann et al.
+
+    """
     assert v.shape == (4, 4), f"{v.shape=}, expected (4, 4)"
     v_mod = _cnot @ v
     alpha = np.angle(np.linalg.det(v_mod)) / 4
     v_mod = np.exp(-1j * alpha) * v_mod
 
     psi, theta, phi = _prop_v2(v_mod)
-    v_prime = _cnot @ _rz_1(psi) @ _cnot @ v_mod
-    w = _cnot @ _rx_rz(theta, phi) @ _cnot
+    v_prime = _ising_zz(psi) @ v_mod
+    w = _core_mat(theta, phi)
     a, b, c, d = _prop_iv3(v_prime, w)
 
     return [a, b, c, d, alpha, -psi, theta, phi]

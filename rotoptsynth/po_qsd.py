@@ -18,7 +18,24 @@ def _two_qubit_unitary(matrix, wires):
 
 
 def po_qsd(matrix: np.ndarray, wires: list) -> list:
-    """Implements the Parameter-Optimal Quantum Shannon Decomposition (PO-QSD)."""
+    r"""Implements the Parameter-Optimal Quantum Shannon Decomposition (PO-QSD).
+
+    Args:
+        matrix (np.ndarray): Matrix to implement
+        wires (list): Wires on which the matrix should act.
+
+    Returns:
+        list: Circuit description in terms of ``qml.RZ``, ``qml.RY``, ``qml.CZ`` and ``qml.CNOT``
+        gates.
+
+    Note that this function queues the decomposition it computes to the queuing system in
+    PennyLane.
+
+    The PO-QSD decomposes an :math:`n`-qubit matrix of size :math:`2^n\times 2^n` into
+    :math:`4^n-1` rotation gates and :math:`\frac12 4^n - \frac38 (n + 2) 2^n + n - 1`
+    entanglers (``qml.CZ`` and ``qml.CNOT``).
+
+    """
     n = len(wires)
     assert matrix.shape == (2**n, 2**n)
 
@@ -44,20 +61,19 @@ def po_qsd(matrix: np.ndarray, wires: list) -> list:
 
         rec_kw = {"n_b": 2, "selective_demux": True}
 
-        F_11, Delta_11 = recursive_flag_decomp_cliff_rz(M11, controls, **rec_kw)
-        F_10, Delta_10 = recursive_flag_decomp_cliff_rz(M10_new * Delta_11, controls, **rec_kw)
-        F_01, Delta_01 = recursive_flag_decomp_cliff_rz(M01_new * Delta_10, controls, **rec_kw)
+        ops_11, Delta_11 = recursive_flag_decomp_cliff_rz(M11, controls, **rec_kw)
+        ops_10, Delta_10 = recursive_flag_decomp_cliff_rz(M10_new * Delta_11, controls, **rec_kw)
+        ops_01, Delta_01 = recursive_flag_decomp_cliff_rz(M01_new * Delta_10, controls, **rec_kw)
 
         # Recurse PO-QSD on the final modified M00 block
-        C00 = po_qsd(M00 * Delta_01, controls)
+        ops_00 = po_qsd(M00 * Delta_01, controls)
 
-        mux_z_rotation_1 = mottonen(theta_Z_1, controls, target, axis="Z", symmetrized="right")
-        mux_y_rotation = mottonen(theta_y_new, controls, target, axis="Y")
-        mux_z_rotation_0 = mottonen(theta_Z_0, controls, target, axis="Z", symmetrized="left")
-        circuit = F_11 + mux_z_rotation_1 + F_10 + mux_y_rotation + F_01 + mux_z_rotation_0 + C00
+        mux_z_rot_1 = mottonen(theta_Z_1, controls, target, axis="Z", symmetrized="right")
+        mux_y_rot = mottonen(theta_y_new, controls, target, axis="Y")
+        mux_z_rot_0 = mottonen(theta_Z_0, controls, target, axis="Z", symmetrized="left")
+    circuit = ops_11 + mux_z_rot_1 + ops_10 + mux_y_rot + ops_01 + mux_z_rot_0 + ops_00
 
     if qml.QueuingManager.recording():
         for op in circuit:
             qml.apply(op)
-    # Combine all operations [cite: 230]
     return circuit

@@ -3,13 +3,12 @@ import pytest
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
-from pennylane.ops.functions import assert_valid
 from pennylane.wires import Wires
 
+from rotoptsynth.multiplexed_flag import MultiplexedFlag
 from rotoptsynth.recursive_flag_decomp import (
     one_qubit_flag_decomp,
     two_qubit_flag_decomp,
-    MultiplexedFlag,
     mux_ops,
     _decompose_mux_single_qubit_flag,
     mux_multi_qubit_decomp,
@@ -68,45 +67,6 @@ class TestTwoQubitFlagDecomp:
         assert isinstance(F, list) and len(F) == 8  # 2 CNOTs and 6 flags
         rec_mat = np.diag(delta) @ qml.matrix(F, wire_order=wires)
         assert np.allclose(rec_mat, v)
-
-
-class TestMultiplexedFlag:
-    """Tests for `multiplexed_flag`."""
-
-    @pytest.mark.parametrize("seed", [825, 1285, 263, 42])
-    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5])
-    def test_standard_validity(self, seed, k):
-        """Test standard operator validity."""
-        np.random.seed(seed)
-        theta_z, theta_y = np.random.random((2, 2**k))
-        op = MultiplexedFlag(theta_z, theta_y, list(range(k + 1)))
-        assert_valid(op, skip_differentiation=True)
-
-    @pytest.mark.parametrize("seed", [825, 1285, 263, 42])
-    @pytest.mark.parametrize("k", [0, 1, 2, 3, 4, 5])
-    def test_decomposition(self, seed, k):
-        """Test basic usage."""
-        np.random.seed(seed)
-        theta_z, theta_y = np.random.random((2, 2**k))
-        op = MultiplexedFlag(theta_z, theta_y, list(range(k + 1)))
-
-        with qml.queuing.AnnotatedQueue() as q:
-            decomp_0 = op.compute_decomposition(theta_z, theta_y, wires=list(range(k + 1)))
-        assert len(q.queue) == 4 * 2**k if k > 0 else 2
-
-        with qml.queuing.AnnotatedQueue() as q:
-            decomp_1 = op.decomposition()
-        assert len(q.queue) == 4 * 2**k if k > 0 else 2
-
-        decomp_mat_0 = qml.matrix(decomp_0, wire_order=range(k + 1))
-        decomp_mat_1 = qml.matrix(decomp_1, wire_order=range(k + 1))
-
-        individual_mats = [
-            qml.matrix(qml.RY(thy, 0) @ qml.RZ(thz, 0)) for thz, thy in zip(theta_z, theta_y)
-        ]
-        expected = qml.math.block_diag(individual_mats)
-        assert np.allclose(expected, decomp_mat_0)
-        assert np.allclose(expected, decomp_mat_1)
 
 
 class TestMuxOps:
