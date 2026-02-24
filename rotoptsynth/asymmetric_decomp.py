@@ -145,8 +145,8 @@ def _prop_iv3(u, v):
     pi_u = delta_u.real * np.pi**2 + delta_u.imag / np.pi**2
     pi_v = delta_v.real * np.pi**2 + delta_v.imag / np.pi**2
     # Compute real-valued diagonalization
-    eigvals_u, a = np.linalg.eigh(pi_u)
-    eigvals_v, b = np.linalg.eigh(pi_v)
+    _, a = np.linalg.eigh(pi_u)
+    _, b = np.linalg.eigh(pi_v)
     # Fix determinants
     a[:, 0] *= np.linalg.det(a)
     b[:, 0] *= np.linalg.det(b)

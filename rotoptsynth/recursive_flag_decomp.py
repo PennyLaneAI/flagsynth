@@ -65,15 +65,19 @@ def two_qubit_flag_decomp(v, wires):
 
 
 class HackyString:
+    """A sneaky string class that appends itself one character at a time when added to a string,
+    instead of being added entirely. This is used to create an operator label
+    for MultiplexedFlag that differs on different wires of the operator."""
 
     def __init__(self, string):
+        self._orig_str = string
         self._str = iter(string)
 
     def __radd__(self, other):
         return other + next(self._str)
 
-    def replace(self, a, b):
-        return self
+    def replace(self, old, new, count=-1):
+        return HackyString(self._orig_str.replace(old, new, count))
 
 
 class MultiplexedFlag(Operation):
@@ -94,7 +98,7 @@ class MultiplexedFlag(Operation):
         return HackyString("◑" * (len(self.wires) - 1) + "⚑")
 
     @staticmethod
-    def compute_decomposition(theta_z, theta_y, wires):
+    def compute_decomposition(theta_z, theta_y, wires): #pylint: disable=arguments-differ
         if len(wires) == 1:
             return [qml.RZ(theta_z[0], wires), qml.RY(theta_y[0], wires)]
 
@@ -237,7 +241,6 @@ def decompose_mux_single_qubit_flags(ops):
                     assert all(
                         w in op.wires for w in d_wires
                     ), "can't merge a diagonal into a smaller MultiplexedFlag."
-                    prev_d_wires = copy.copy(d_wires)
                     op, d, d_wires = _merge_diag_into_mux(op, d, d_wires)
                     main_diags[j] = d
                     main_diag_wires[j] = d_wires
@@ -385,7 +388,7 @@ def recursive_flag_decomp_cliff_rz(
     # Base cases
     if n_b == 1 and n == 1:
         return one_qubit_flag_decomp(V, wires)
-    elif n_b == 2 and n == 2:
+    if n_b == 2 and n == 2:
         ops, diag = two_qubit_flag_decomp(V, wires)
         ops, _ = decompose_mux_single_qubit_flags(ops)
         return ops, diag
@@ -408,7 +411,7 @@ def recursive_flag_decomp_cliff_rz(
 
         F_Z = mottonen(theta_Z_prime, controls, target, axis="Z", symmetrized="right")
 
-        # The following de-multiplexing only is done to enable symmetrized Mottonen it is undone later.
+        # The following de-multiplexing only is done to enable symmetrized Mottonen
         M00, theta_Z_0, M01 = de_mux(K00, K01)
         M01_new, theta_Y_new, M10_new = re_and_de_mux(M01, M10, theta_Y, wires, side="left")
 
