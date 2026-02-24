@@ -58,13 +58,19 @@ We may also look at the synthesized circuit:
 1: ··· ───────────╰●───────────│─────────────╰●─────────RZ(11.75)──RY(2.14)─╭●──RZ(13.38) ···
 2: ··· ────────────────────────╰●──RZ(0.80)───RY(0.90)──────────────────────╰Z──RZ(2.14)─ ···
 
-0: ··· ───────────────────────────────────╭X──RZ(1.28)─╭X──RZ(0.93)─╭X──RZ(2.13)─┤  
-1: ··· ──RY(-1.84)─╭●──RZ(8.85)──RY(1.61)─│────────────╰●───────────│──╭U(M0)────┤  
-2: ··· ──RY(0.78)──╰Z──RZ(9.84)──RY(0.71)─╰●────────────────────────╰●─╰U(M0)────┤
+0: ··· ───────────────────────────────────╭X──RZ(1.28)─╭X──RZ(0.93)─╭X──RZ(2.13)─────────── ···
+1: ··· ──RY(-1.84)─╭●──RZ(8.85)──RY(1.61)─│────────────╰●───────────│───RZ(11.17)──RY(1.50) ···
+2: ··· ──RY(0.78)──╰Z──RZ(9.84)──RY(0.71)─╰●────────────────────────╰●──RZ(3.32)───RY(1.13) ···
+
+0: ··· ─────────────────────────────────────────────────────────────────────── ···
+1: ··· ──RZ(3.55)─╭X──RZ(0.17)─╭●───────────╭X──RZ(2.50)───RY(2.00)──RZ(10.12) ···
+2: ··· ──RZ(1.75)─╰●──RY(1.83)─╰X──RY(2.16)─╰●──RZ(10.81)──RY(1.47)──RZ(10.77) ···
+
+0: ··· ─╭GlobalPhase(-1.02)─┤
+1: ··· ─├GlobalPhase(-1.02)─┤
+2: ··· ─╰GlobalPhase(-1.02)─┤
 ```
 
-We see the fully decomposed structure of the PO-QSD due to the target gate set {Clifford+Rot},
-except for the two-qubit `qml.QubitUnitary` at the end, denoted as `U(M0)`. It can be decomposed
-with the standard technique for such unitaries, which is readily available in PennyLane.
+We see the fully decomposed structure of the PO-QSD due to the target gate set {Clifford+Rot}.
 
 

@@ -4,6 +4,11 @@ import pennylane as qml
 from .recursive_flag_decomp import recursive_flag_decomp
 from .linalg import csd, de_mux, re_and_de_mux, mottonen
 
+def two_qubit_unitary(V, wires):
+    tape = qml.tape.QuantumScript([qml.QubitUnitary(V, wires)])
+    (tape,), _ = qml.decompose(tape, gate_set={"RY", "RZ", "CNOT", "GlobalPhase"})
+    (tape,), _ = qml.transforms.combine_global_phases(tape)
+    return tape.operations
 
 def po_qsd(V: np.ndarray, wires: list) -> list:
     """
@@ -15,7 +20,7 @@ def po_qsd(V: np.ndarray, wires: list) -> list:
 
     # Base Case
     if n == 2:
-        return [qml.QubitUnitary(V, wires=wires)]
+        return two_qubit_unitary(V, wires)
 
     with qml.QueuingManager.stop_recording():
         controls = wires[1:]
