@@ -73,4 +73,25 @@ We may also look at the synthesized circuit:
 
 We see the fully decomposed structure of the PO-QSD due to the target gate set {Clifford+Rot}.
 
+Alternatively, we may want to decompose to multiplexed single-qubit flags, which can
+then be implemented efficiently with ``QROM``s, ``Adder``s and phase gradient resources states,
+realizing the ``RZ`` and ``RY`` rotations of the flags at the same time or sequentially (depending
+on desired work qubit usage). See the paper for details.
+
+```pycon
+>>> n = 4
+>>> wires = list(range(n))
+>>> U = unitary_group.rvs(2**n, random_state=81512)
+>>> print(qml.draw(ros.recursive_flag_decomp, show_matrices=False)(U, wires))
+0: ─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭⚑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭U(M0)─┤  
+1: ─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├◑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├U(M0)─┤  
+2: ─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├U(M0)─┤  
+3: ─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰◑─╰⚑─╰U(M0)─┤  
+```
+
+Note the trailing ``U(M0)`` which denotes a ``qml.DiagonalQubitUnitary`` operation, i.e.,
+a diagonal on all qubits. It can be decomposed similarly to a multiplexed ``RZ`` gate.
+
+
+## License
 
