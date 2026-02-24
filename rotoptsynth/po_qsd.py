@@ -3,16 +3,29 @@ Shannon Decomposition."""
 
 import numpy as np
 import pennylane as qml
+from pennylane.decomposition import register_resources, add_decomps, resource_rep
 
 from .linalg import csd, de_mux, mottonen, re_and_de_mux
 from .recursive_flag_decomp import recursive_flag_decomp_cliff_rz
 
 
+@register_resources(lambda num_wires: {qml.RZ: 2, qml.RY:1} if num_wires == 1 else {qml.RZ: 7, qml.RY: 8, qml.CNOT: 3})
+def _fixed_qubit_unitary_decomp(matrix, wires):
+    if len(matrix) == 4:
+        return qml.ops.two_qubit_decomposition(matrix, wires)
+    assert len(matrix) == 2
+    return qml.ops.op_math.decompositions.unitary_decompositions.zyz_decomp_rule(U, wires)
+
+
 def _two_qubit_unitary(matrix, wires):
     """Decompose a two-qubit unitary matrix into a circuit of RZ, RY, CNOT and
     GlobalPhase gates."""
+    if qml.decomposition.enabled_graph():
+        kwargs = {"fixed_decomps": {qml.QubitUnitary: _fixed_qubit_unitary_decomp}}
+    else:
+        kwargs = {}
     tape = qml.tape.QuantumScript([qml.QubitUnitary(matrix, wires)])
-    (tape,), _ = qml.decompose(tape, gate_set={"RY", "RZ", "CNOT", "GlobalPhase"})
+    (tape,), _ = qml.decompose(tape, gate_set={"RY", "RZ", "CNOT", "GlobalPhase"}, **kwargs)
     (tape,), _ = qml.transforms.combine_global_phases(tape)
     return tape.operations
 
@@ -77,3 +90,16 @@ def po_qsd(matrix: np.ndarray, wires: list) -> list:
         for op in circuit:
             qml.apply(op)
     return circuit
+
+def _po_qsd_resources(num_wires):
+    n = num_wires
+    exp_num_cnots = 4**n // 2 - 3 * (n + 2) * 2**n // 8 + n - 1
+    return {
+        resource_rep(qml.RZ): 4**n//2 - 1,
+        resource_rep(qml.RY): 4**n//2,
+        resource_rep(qml.CNOT): exp_num_cnots - 1,
+        resource_rep(qml.CZ): 1,
+    }
+
+po_qsd_rule = register_resources(_po_qsd_resources, po_qsd, exact=False)
+add_decomps(qml.QubitUnitary, po_qsd_rule)

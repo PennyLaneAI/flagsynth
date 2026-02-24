@@ -15,8 +15,8 @@ pip install .
 
 The primary functionality of this package consists of the functions `rotoptsynth.po_qsd`,
 implementing the parameter-optimal Quantum Shannon Decomposition (PO-QSD)
-into the {Clifford+Rot} gate set, and `todo`, decomposing into QROMs and adders onto a resource
-phase gradient state.
+into the {Clifford+Rot} gate set, and `rotoptsynth.recursive_flag_decomp`, decomposing into 
+QROMs and adders onto a resource phase gradient state.
 These functions are written to be used with [PennyLane](pennylane.ai) and return sequences of
 PennyLane gates. They respect PennyLane's queuing system and thus can be used as-is
 in `qml.QNode`s.
@@ -92,6 +92,30 @@ on desired work qubit usage). See the paper for details.
 Note the trailing ``U(M0)`` which denotes a ``qml.DiagonalQubitUnitary`` operation, i.e.,
 a diagonal on all qubits. It can be decomposed similarly to a multiplexed ``RZ`` gate.
 
+## Usage with PennyLane
+
+Until the functionality is merged into PennyLane itself, ``rotoptsynth`` registers the
+main functionalities as decompositions of ``qml.QubitUnitary``, using 
+the graph-based decomposition system:
+
+```python
+n = 3
+qml.decomposition.enable_graph()
+
+gate_set = {"RZ", "RY", "CNOT", "CZ", "GlobalPhase"}
+
+@qml.decompose(gate_set=gate_set)
+@qml.qnode(qml.device("lightning.qubit", wires=n))
+def my_qnode(U):
+    qml.QubitUnitary(U, wires=range(n))
+    return qml.expval(qml.X(1))
+
+U = unitary_group.rvs(2**n, random_state=81212)
+```
+```pycon
+>>> print(my_qnode(U))
+-0.1703878223917237
+```
 
 ## License
 
