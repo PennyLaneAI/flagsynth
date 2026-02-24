@@ -1,7 +1,4 @@
-"""Python package for parameter-optimal unitary synthesis techniques."""
-
-from .asym_decomp import asymmetric_two_qubit_decomp
-from .flag_decomp import attach_multiplexer_node, flag_decomp
-from .rot_opt_qsd import rot_opt_qsd, real_rot_opt_qsd
-from .utils import aiii_kak, count_clifford, count_rotation_angles, ops_to_mat
-from .validation import disable_validation, enable_validation, validation_enabled
+from .linalg import csd, mottonen, de_mux, balance_diagonal, re_and_de_mux, merge_diagonals
+from .asymmetric_decomp import asymmetric_decomp
+from .recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, decompose_mux_single_qubit_flags,mux_multi_qubit_decomp, recursive_flag_decomp
+from .po_qsd import po_qsd
