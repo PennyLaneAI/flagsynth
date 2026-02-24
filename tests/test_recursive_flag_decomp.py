@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.ops.functions import assert_valid
 from pennylane.wires import Wires
 
-from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp
+from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp, recursive_flag_decomp
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
@@ -222,14 +222,15 @@ class TestDecomposeMuxSingleQubitFlags:
 class TestMuxMultiQubitDecomp:
     """Test ``mux_multi_qubit_decomp``."""
 
-    @pytest.mark.parametrize("seed", [512, 862, 8362])
+    @pytest.mark.parametrize("seed", [5112, 8622, 862])
     @pytest.mark.parametrize("num_controls", [1, 2, 3, 4])
-    def test_two_qubit_unitaries(self, num_controls, seed):
+    @pytest.mark.parametrize("n_b", [1, 2])
+    def test_two_qubit_unitaries(self, num_controls, seed, n_b):
         """Test the base case of multiplexed two-qubit unitaries."""
         mats = unitary_group.rvs(4, size=2**num_controls, random_state=seed)
         controls = list(range(num_controls))
         targets = list(range(num_controls, num_controls+2))
-        ops, diag = mux_multi_qubit_decomp(mats, controls, targets)
+        ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b)
 
         in_mat = qml.math.block_diag(mats)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
@@ -237,17 +238,23 @@ class TestMuxMultiQubitDecomp:
         assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ)) for op in ops)
         num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
         assert num_rots == 12 * 2**num_controls # two qubit flag has 12 rotations
-        assert len(ops) - num_rots == 6 * 2**num_controls - 4
+        if n_b == 2:
+            exp_num_cnots = 6 * 2**num_controls - 4 # Eq.(D27)
+        else:
+            n = 2
+            exp_num_cnots = (2**n - 1) * (2**(n-1+num_controls)-1)
 
-    @pytest.mark.parametrize("seed", [512, 862, 8362])
-    @pytest.mark.parametrize("num_controls, num_targets", [(1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (3, 3)])
-    def test_multi_qubit_unitaries(self, num_controls, num_targets, seed):
+        assert len(ops) - num_rots == exp_num_cnots
+
+    @pytest.mark.parametrize("seed", [512, 8362])
+    @pytest.mark.parametrize("num_controls, num_targets", [(1, 3), (1, 4), (2, 3), (2, 4), (3, 3), (4, 3)])
+    @pytest.mark.parametrize("n_b", [1, 2])
+    def test_multi_qubit_unitaries(self, num_controls, num_targets, seed, n_b):
         """Test the base case of multiplexed two-qubit unitaries."""
         mats = unitary_group.rvs(2**num_targets, size=2**num_controls, random_state=seed)
         controls = list(range(num_controls))
         targets = list(range(num_controls, num_controls+num_targets))
-        ops, diag = mux_multi_qubit_decomp(mats, controls, targets)
-
+        ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=n_b)
 
         tape = qml.tape.QuantumScript(ops)
         in_mat = qml.math.block_diag(mats)
@@ -255,6 +262,42 @@ class TestMuxMultiQubitDecomp:
         assert np.allclose(rec_mat, in_mat)
         assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ)) for op in ops)
         num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
-        assert num_rots == (4**num_targets - 2**num_targets) * 2**num_controls # see paper
-        exp_num_cnots = (4**num_targets - 2**num_targets)//2 * 2**num_controls - 5*2**num_targets//4 + 1
+        n = num_targets
+        k = num_controls
+        assert num_rots == (4**n - 2**n) * 2**k # Flag d.o.f.s
+        if n_b == 2:
+            exp_num_cnots = (4**n - 2**n)//2 * 2**k - 5*2**n//4 + 1
+        else:
+            exp_num_cnots = (2**n - 1) * (2**(n-1+k)-1)
+        assert len(ops) - num_rots == exp_num_cnots
+
+class TestRecursiveFlagDecomp:
+    """Test the main recursive flag decomposition function."""
+
+    @pytest.mark.parametrize("seed", [932, 2185, 752])
+    @pytest.mark.parametrize("num_targets", [2, 3, 4, 5])
+    @pytest.mark.parametrize("n_b", [1, 2])
+    @pytest.mark.parametrize("selective_demux", [True, False])
+    def test_main_usage(self, seed, num_targets, n_b,selective_demux):
+        """Test main usage."""
+        if n_b == 1 and selective_demux:
+            pytest.skip(reason="We never use this scenario.")
+        targets = list(range(num_targets))
+        V = unitary_group.rvs(2**num_targets, random_state=seed)
+        ops, diag = recursive_flag_decomp(V, targets, n_b, selective_demux)
+        rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=targets)
+        assert np.allclose(rec_mat, V)
+        assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ, qml.CNOT)) for op in ops), f"{set(type(op) for op in ops)}"
+        num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
+        n = num_targets
+        assert num_rots == (4**n - 2**n)
+
+        if n_b == 2:
+            if selective_demux:
+                exp_num_cnots = 4**n//2-(n+12)*2**n // 8 + 1 # Eq. (D26)
+            else:
+                exp_num_cnots = (4**n - 2**n)//2 - 5*2**n//4 + 1 # Eq. (D27)
+        else:
+            exp_num_cnots = (2**n - 1) * (2**(n-1)-1)
+
         assert len(ops) - num_rots == exp_num_cnots

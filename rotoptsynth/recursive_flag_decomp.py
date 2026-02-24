@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.operation import Operation
 from pennylane.math.decomposition import zyz_rotation_angles
 from .asymmetric_decomp import asymmetric_decomp
-from .linalg import balance_diagonal, mottonen, merge_diagonals, csd
+from .linalg import balance_diagonal, mottonen, merge_diagonals, csd, de_mux, re_and_de_mux
 
 def one_qubit_flag_decomp(V: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """
@@ -182,16 +182,6 @@ def _merge_diag_into_mux(op, main_diag, main_diag_wires):
     op = MultiplexedFlag(op.data[0] + theta_broad, op.data[1], op.wires)
     return op, main_diag, main_diag_wires
 
-def _apply_cnot_to_diag(diag, diag_wires, cnot_wires):
-    assert cnot_wires[1] in diag_wires
-    if cnot_wires[0] not in diag_wires:
-        diag = np.kron(np.eye(2), diag)
-        diag_wires = [cnot_wires[0]] + diag_wires
-
-    _cnot = qml.CNOT(cnot_wires).matrix(wire_order=diag_wires)
-    diag = np.diag(_cnot @ np.diag(diag) @ _cnot)
-    return diag, diag_wires
-
 def decompose_mux_single_qubit_flags(ops):
     """Transform that sweeps through a circuit, decomposing multiplexed single-qubit flags
     and moves remainder diagonals along."""
@@ -241,7 +231,6 @@ def decompose_mux_single_qubit_flags(ops):
     for d, d_wires in zip(main_diags, main_diag_wires, strict=True):
         main_diag = main_diag * np.diag(qml.math.expand_matrix(np.diag(d), wires=d_wires, wire_order=wires))
     return new_ops, main_diag
-    return (tape.copy(operations=new_ops),), proc
 
 
 def mux_ops(ops: list, controls: list) -> list:
@@ -301,25 +290,21 @@ def mux_ops(ops: list, controls: list) -> list:
     return muxed_ops
 
 
-def mux_multi_qubit_decomp(mats, mux_wires, target_wires):
+def mux_multi_qubit_decomp(mats, mux_wires, target_wires, n_b):
     """Decompose a multiplexed multi-qubit unitary via flag circuits."""
-    if len(target_wires) == 2:
-        two_qubit_decomps = []
-        two_qubit_diags = []
-        for mat in mats:
-            dec, diag = two_qubit_flag_decomp(mat, target_wires)
-            two_qubit_decomps.append(dec)
-            two_qubit_diags.append(diag)
+    if n_b == len(target_wires):
+        base_case_fn = one_qubit_flag_decomp if n_b == 1 else two_qubit_flag_decomp
 
-        muxed_ops = mux_ops(two_qubit_decomps, controls=mux_wires)
+        decs, diags = zip(*(base_case_fn(mat, target_wires) for mat in mats))
+        muxed_ops = mux_ops(decs, controls=mux_wires)
         new_ops, new_diag = decompose_mux_single_qubit_flags(muxed_ops)
-        diag = np.concatenate(two_qubit_diags) * new_diag
+        diag = np.concatenate(diags) * new_diag
         return new_ops, diag
 
     K00, K01, theta_Y, K10, K11 = zip(*[csd(mat) for mat in mats])
     K0 = list(chain.from_iterable(zip(K00, K01)))
     K1 = list(chain.from_iterable(zip(K10, K11)))
-    ops1, diag1 = mux_multi_qubit_decomp(K1, mux_wires + target_wires[:1], target_wires[1:])
+    ops1, diag1 = mux_multi_qubit_decomp(K1, mux_wires + target_wires[:1], target_wires[1:], n_b=n_b)
     theta_Y = np.concatenate(theta_Y)
 
     theta_Z, diag_mid = balance_diagonal(diag1, len(mux_wires))
@@ -329,6 +314,92 @@ def mux_multi_qubit_decomp(mats, mux_wires, target_wires):
 
     sub_size = len(K0[0])
     K0 = [k * diag_mid[sub_size*i : sub_size*(i+1)] for i, k in enumerate(K0)]
-    ops0, diag0 = mux_multi_qubit_decomp(K0, mux_wires + target_wires[:1], target_wires[1:])
+    ops0, diag0 = mux_multi_qubit_decomp(K0, mux_wires + target_wires[:1], target_wires[1:], n_b=n_b)
 
     return ops1 + ops_a + ops0, diag0
+
+def recursive_flag_decomp(V: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False, break_down=True) -> tuple[list, np.ndarray]:
+    """
+    Implements the recursive flag decomposition (Algorithm 1).
+
+    Args:
+        V (np.ndarray): A 2^n x 2^n complex unitary matrix.
+        wires (list): The list of wires [q_0, q_1, ..., q_{n-1}].
+        n_b (int): Base case threshold (1 or 2).
+
+    Returns:
+        tuple: (F, Delta) where:
+            - F is a list of PennyLane operations (the flag circuit).
+            - Delta is a 1D numpy array representing the extracted diagonal matrix.
+    """
+    n = len(wires)
+
+    # Base cases
+    if n_b == 1 and n == 1:
+        return one_qubit_flag_decomp(V, wires)
+    elif n_b == 2 and n == 2:
+        ops, diag = two_qubit_flag_decomp(V, wires)
+        ops, new_diag = decompose_mux_single_qubit_flags(ops)
+        assert np.allclose(new_diag, np.ones(4))
+        return ops, diag
+
+    # 1. Cosine-Sine Decomposition
+    K00, K01, theta_Y, K10, K11 = csd(V)
+
+    controls = wires[1:]
+    target = wires[0]
+
+    if selective_demux:
+        # Selective de-multiplexing branch
+        M10, theta_Z_prime, M11 = de_mux(K10, K11)
+
+        F11, Delta = recursive_flag_decomp(M11, controls, n_b=n_b, selective_demux=selective_demux, break_down=break_down)
+        if break_down:
+            F11, Delta_11_mod = decompose_mux_single_qubit_flags(F11)
+            Delta = Delta * Delta_11_mod
+
+        assert np.allclose(M11, np.diag(Delta) @ qml.matrix(F11, wire_order=controls))
+
+        F_Z = mottonen(theta_Z_prime, controls, target, axis="Z", symmetrized="right")
+
+        # The following de-multiplexing only is done to enable symmetrized Mottonen it is undone later.
+        M00, theta_Z_0, M01 = de_mux(K00, K01)
+        M01_new, theta_Y_new, M10_new = re_and_de_mux(M01, M10, theta_Y, wires, side="left")
+
+        F10, Delta_prime = recursive_flag_decomp(M10_new * Delta, controls, n_b=n_b, selective_demux=selective_demux, break_down=break_down)
+        if break_down:
+            F10, Delta_10_mod = decompose_mux_single_qubit_flags(F10)
+            Delta_prime = Delta_prime * Delta_10_mod
+
+        F_Y = mottonen(theta_Y_new, controls, target, axis="Y", symmetrized="right")
+
+        F_top = F11 + F_Z + F10 + F_Y
+
+        _cz = qml.CZ([controls[0], target]).matrix(wire_order=wires)
+        re_mux_rhs = np.kron(np.eye(2), M00) @ qml.matrix(mottonen(theta_Z_0, controls, target, axis="Z"), wire_order=wires) @ np.kron(np.eye(2), M01_new) @ _cz
+        K00 = re_mux_rhs[:2**(n-1),:2**(n-1)]
+        K01 = re_mux_rhs[2**(n-1):,2**(n-1):]
+        Delta_prime0 = Delta_prime1 = Delta_prime
+
+    else:
+        # Standard n_b = 1 recursive branch
+        F_top, Delta_top = mux_multi_qubit_decomp([K10, K11], mux_wires=[target], target_wires=controls, n_b=n_b)
+
+        # Combine the diagonals and split them into a Z-rotation and a residual diagonal
+        theta_Z, Delta_prime = balance_diagonal(Delta_top, 0)
+
+        F_A = [MultiplexedFlag(theta_Z, theta_Y, controls+[target])]
+        if break_down:
+            F_A, Delta_prime_mod = decompose_mux_single_qubit_flags(F_A)
+            N = len(Delta_prime_mod)
+            Delta_prime0 = Delta_prime * Delta_prime_mod[:N//2]
+            Delta_prime1 = Delta_prime * Delta_prime_mod[N//2:]
+        else:
+            Delta_prime0 = Delta_prime1 = Delta_prime
+
+        # attach a multiplexer control to F10 and F11 based on the target qubit
+        F_top = F_top + F_A
+
+    # Common continuation for K00 and K01 blocks
+    F_bottom, Delta_out = mux_multi_qubit_decomp([K00 * Delta_prime0, K01 * Delta_prime1], mux_wires=[target], target_wires=controls, n_b=n_b)
+    return F_top + F_bottom, Delta_out
