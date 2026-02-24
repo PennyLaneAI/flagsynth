@@ -6,7 +6,7 @@ import pennylane as qml
 from pennylane.ops.functions import assert_valid
 from pennylane.wires import Wires
 
-from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag
+from rotoptsynth.recursive_flag_decomp import one_qubit_flag_decomp, two_qubit_flag_decomp, MultiplexedFlag, mux_ops, _decompose_mux_single_qubit_flag, mux_multi_qubit_decomp
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
@@ -98,52 +98,65 @@ class TestMultiplexedFlag:
 class TestMuxOps:
     """Tests for `mux_ops`."""
 
-    @pytest.mark.parametrize("ops0,ops1", [
-        ([qml.CNOT([0, 1])], [qml.CNOT([0, 1])]),
-        ([qml.X(0)], [qml.X(0)]),
-        ([qml.CNOT([0, 1]), qml.CY([1, 5])], [qml.CNOT([0, 1]), qml.CY([1, 5])]),
+    @pytest.mark.parametrize("ops", [
+        [qml.CNOT([0, 1])],
+        [qml.X(0)],
+        [qml.CNOT([0, 1]), qml.CY([1, 5])]
     ])
-    def test_with_static_gates(self, ops0, ops1):
+    @pytest.mark.parametrize("controls", ([100], [10, "aux"], [1, 2, 3, 4, 5, 6]))
+    def test_with_static_gates(self, ops, controls):
         """Test that static gates are just copied."""
-        new_ops = mux_ops(ops0, ops1, 100)
-        assert new_ops == ops0
+        k = len(controls)
+        new_ops = mux_ops([ops for _ in range(2**k)], controls)
+        assert new_ops == ops
 
     @pytest.mark.parametrize("k", [0, 1, 2, 3, 4])
-    def test_with_single_mux_flag(self, k):
+    @pytest.mark.parametrize("num_controls", [1, 2, 3, 4, 5])
+    def test_with_single_mux_flag(self, k, num_controls):
         """Test that a single multiplexed flag is multiplexed further."""
-        theta_z0, theta_y0, theta_z1, theta_y1 = np.random.random((4, 2**k))
-        ops0 = [MultiplexedFlag(theta_z0, theta_y0, list(range(k+1)))]
-        ops1 = [MultiplexedFlag(theta_z1, theta_y1, list(range(k+1)))]
+        thetas = np.random.random((2 * 2**num_controls, 2**k))
+        ops = [[MultiplexedFlag(*thetas[2*i:2*i+2], list(range(k+1)))] for i in range(2**num_controls)]
         with qml.queuing.AnnotatedQueue() as q:
-            new_ops = mux_ops(ops0, ops1, k+1)
+            new_ops = mux_ops(ops, list(range(k+1, k+1+num_controls)))
         assert len(q.queue) == 0
 
         assert len(new_ops) == 1
         new_op = new_ops[0]
         assert isinstance(new_op, MultiplexedFlag)
-        assert np.allclose(new_op.data[0][:2**k], theta_z0)
-        assert np.allclose(new_op.data[0][2**k:], theta_z1)
-        assert np.allclose(new_op.data[1][:2**k], theta_y0)
-        assert np.allclose(new_op.data[1][2**k:], theta_y1)
-        assert new_op.wires == Wires([k+1]+list(range(k+1)))
-
+        exp_theta_z = np.concatenate(thetas[::2])
+        exp_theta_y = np.concatenate(thetas[1::2])
+        assert np.allclose(new_op.data[0], exp_theta_z)
+        assert np.allclose(new_op.data[1], exp_theta_y)
+        exp_wires = Wires(list(range(k+1,k+1+num_controls))+list(range(k+1)))
+        assert new_op.wires == exp_wires
 
     @pytest.mark.parametrize("k", [2, 3, 4])
-    def test_with_mixed_ops(self, k):
+    @pytest.mark.parametrize("num_controls", [1, 2, 3])
+    def test_with_mixed_ops(self, k, num_controls):
         """Test that a single multiplexed flag is multiplexed further."""
-        theta_z0, theta_y0, theta_z1, theta_y1 = np.random.random((4, 2**k))
-        ops0 = [MultiplexedFlag(theta_z0, theta_y0, list(range(k+1))), qml.CNOT([0, 1]), qml.H(2), qml.CY([2, 0]), MultiplexedFlag(theta_z1, theta_y1, list(range(k+1)))]
-        ops1 = [MultiplexedFlag(theta_y1, theta_z1, list(range(k+1))), qml.CNOT([0, 1]), qml.H(2), qml.CY([2, 0]), MultiplexedFlag(theta_y0, theta_z0, list(range(k+1)))]
+        thetas, phis = np.random.random((2, 2* 2**num_controls, 2**k))
+        targets = list(range(k+1))
+        controls = list(range(k+1, k+1+num_controls))
+        ops = [
+            [
+                MultiplexedFlag(*thetas[2*i:2*i+2], targets),
+                qml.CNOT([0, 1]),
+                qml.H(2),
+                qml.CY([2, 0]),
+                MultiplexedFlag(*phis[2*i:2*i+2], targets[::-1]),
+            ]
+            for i in range(2**num_controls)
+        ]
+
         with qml.queuing.AnnotatedQueue() as q:
-            new_ops = mux_ops(ops0, ops1, k+1)
+            new_ops = mux_ops(ops, controls)
 
         assert len(q.queue) == 0
-        assert all(isinstance(new_op, type(op0)) for new_op, op0 in zip(new_ops, ops0, strict=True))
+        assert all(isinstance(new_op, type(op0)) for new_op, op0 in zip(new_ops, ops[0], strict=True))
 
-        wire_order = list(range(k+1))
-        individual_mats = [qml.matrix(ops, wire_order=wire_order) for ops in [ops0, ops1]]
+        individual_mats = [qml.matrix(_ops, wire_order=targets) for _ops in ops]
         expected = qml.math.block_diag(individual_mats)
-        new_mat = qml.matrix(new_ops, wire_order=[k+1]+wire_order)
+        new_mat = qml.matrix(new_ops, wire_order=controls+targets)
         assert np.allclose(new_mat, expected)
 
 
@@ -205,3 +218,43 @@ class TestDecomposeMuxSingleQubitFlags:
         out_mat2 = np.diag(D) @ qml.matrix(q.queue, wire_order=wires)
         assert np.allclose(op_mat, out_mat)
         assert np.allclose(op_mat, out_mat2)
+
+class TestMuxMultiQubitDecomp:
+    """Test ``mux_multi_qubit_decomp``."""
+
+    @pytest.mark.parametrize("seed", [512, 862, 8362])
+    @pytest.mark.parametrize("num_controls", [1, 2, 3, 4])
+    def test_two_qubit_unitaries(self, num_controls, seed):
+        """Test the base case of multiplexed two-qubit unitaries."""
+        mats = unitary_group.rvs(4, size=2**num_controls, random_state=seed)
+        controls = list(range(num_controls))
+        targets = list(range(num_controls, num_controls+2))
+        ops, diag = mux_multi_qubit_decomp(mats, controls, targets)
+
+        in_mat = qml.math.block_diag(mats)
+        rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
+        assert np.allclose(rec_mat, in_mat)
+        assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ)) for op in ops)
+        num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
+        assert num_rots == 12 * 2**num_controls # two qubit flag has 12 rotations
+        assert len(ops) - num_rots == 6 * 2**num_controls - 4
+
+    @pytest.mark.parametrize("seed", [512, 862, 8362])
+    @pytest.mark.parametrize("num_controls, num_targets", [(1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (3, 3)])
+    def test_multi_qubit_unitaries(self, num_controls, num_targets, seed):
+        """Test the base case of multiplexed two-qubit unitaries."""
+        mats = unitary_group.rvs(2**num_targets, size=2**num_controls, random_state=seed)
+        controls = list(range(num_controls))
+        targets = list(range(num_controls, num_controls+num_targets))
+        ops, diag = mux_multi_qubit_decomp(mats, controls, targets)
+
+
+        tape = qml.tape.QuantumScript(ops)
+        in_mat = qml.math.block_diag(mats)
+        rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls+targets)
+        assert np.allclose(rec_mat, in_mat)
+        assert all(isinstance(op, (qml.RZ, qml.RY, qml.CZ)) for op in ops)
+        num_rots = sum(isinstance(op, (qml.RZ, qml.RY)) for op in ops)
+        assert num_rots == (4**num_targets - 2**num_targets) * 2**num_controls # see paper
+        exp_num_cnots = (4**num_targets - 2**num_targets)//2 * 2**num_controls - 5*2**num_targets//4 + 1
+        assert len(ops) - num_rots == exp_num_cnots

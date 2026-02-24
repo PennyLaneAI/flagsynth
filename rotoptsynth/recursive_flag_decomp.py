@@ -1,10 +1,12 @@
+import copy
 from functools import partial
+from itertools import chain
 import numpy as np
 import pennylane as qml
 from pennylane.operation import Operation
 from pennylane.math.decomposition import zyz_rotation_angles
 from .asymmetric_decomp import asymmetric_decomp
-from .linalg import balance_diagonal, mottonen, merge_diagonals
+from .linalg import balance_diagonal, mottonen, merge_diagonals, csd
 
 def one_qubit_flag_decomp(V: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """
@@ -171,20 +173,11 @@ def _decompose_mux_single_qubit_flag(op):
 
 
 def _merge_diag_into_mux(op, main_diag, main_diag_wires):
-    #print(f"{op.wires=}")
-    #print(f"{main_diag_wires=}")
     target = op.wires[-1]
-    #print(f'{target=}')
     balance_idx = main_diag_wires.index(target)
-    #print(f"{balance_idx=}")
     main_diag_wires.pop(balance_idx)
     theta, main_diag = balance_diagonal(main_diag, balance_idx)
-    #print(f"{theta=}")
-    #print(f"{main_diag=}")
     missing_ctrls = [w for w in op.wires[:-1] if w not in main_diag_wires]
-    #print(f"{missing_ctrls=}")
-    #print(f"wires: {missing_ctrls+main_diag_wires=}")
-    #print(f"wire_order: {op.wires[:-1]=}")
     theta_broad = np.diag(qml.math.expand_matrix(np.diag(np.kron(np.ones(2**len(missing_ctrls)), theta)), wires=missing_ctrls+main_diag_wires, wire_order=op.wires[:-1]))
     op = MultiplexedFlag(op.data[0] + theta_broad, op.data[1], op.wires)
     return op, main_diag, main_diag_wires
@@ -207,19 +200,17 @@ def decompose_mux_single_qubit_flags(ops):
         #return results[0]
 
     tape = qml.tape.QuantumScript(ops)
-    print(qml.drawer.tape_text(tape, show_matrices=False, wire_order=sorted(tape.wires)))
-    print("\n"*3)
 
     main_diags = []
     main_diag_wires = []
 
     new_ops = []
     for op in ops:#tape.operations:
-        #print(f"Handling {op=}. {main_diag_wires=}")
         if isinstance(op, MultiplexedFlag):
             for j, (d, d_wires) in enumerate(zip(main_diags, main_diag_wires, strict=True)):
                 if op.wires[-1] in d_wires:
                     assert all(w in op.wires for w in d_wires), "can't merge a diagonal into a smaller MultiplexedFlag."
+                    prev_d_wires = copy.copy(d_wires)
                     op, d, d_wires = _merge_diag_into_mux(op, d, d_wires)
                     main_diags[j] = d
                     main_diag_wires[j] = d_wires
@@ -227,7 +218,6 @@ def decompose_mux_single_qubit_flags(ops):
                 new_ops.extend([qml.RZ(op.data[0][0], op.wires), qml.RY(op.data[1][0], op.wires)])
                 continue
             _ops, _d = _decompose_mux_single_qubit_flag(op)
-            #main_diag, main_diag_wires = merge_diagonals(main_diag, main_diag_wires, _d, op.wires)
             new_ops.extend(_ops)
             main_diags.append(_d)
             main_diag_wires.append(list(op.wires))
@@ -254,51 +244,91 @@ def decompose_mux_single_qubit_flags(ops):
     return (tape.copy(operations=new_ops),), proc
 
 
-def mux_ops(ops0: list, ops1: list, control: int) -> list:
+def mux_ops(ops: list, controls: list) -> list:
     """
-    Attaches a control wire to two lists of operations, exploiting the Multiplexer
+    Attaches k control wires to 2**k lists of operations, exploiting the Multiplexer
     Extension Property. If a gate is static (no parameters), it is applied unconditionally
     to save control nodes.
 
     Args:
-        ops0 (list): Operations to apply if control is 0.
-        ops1 (list): Operations to apply if control is 1.
+        ops (list[list]): Operations to apply for different control values
         control (int): The control wire.
 
     Returns:
         list: A new list of optimized controlled PennyLane operations.
     """
+    n = len(controls)
+    assert len(ops) == 2**n
     muxed_ops = []
 
-    with qml.QueuingManager.stop_recording():
-        for op0, op1 in zip(ops0, ops1):
-            assert isinstance(op0, type(op1)) and op0.wires == op1.wires
-            # Check if the operation is static (0 parameters, e.g., CNOT, X, Y, Z)
-            if op0.num_params == 0:
-                # The gate is identical in both branches, so it acts unconditionally.
-                muxed_ops.append(op0)
-            elif isinstance(op0, MultiplexedFlag):
-                new_op = MultiplexedFlag(
-                    np.concatenate([op0.data[0], op1.data[0]]),
-                    np.concatenate([op0.data[1], op1.data[1]]),
-                    [control] + op0.wires,
-                )
-                muxed_ops.append(new_op)
-            elif isinstance(op0, qml.RZ):
-                new_op = MultiplexedFlag(
-                    np.array([op0.data[0], op1.data[0]]),
-                    np.zeros(2,),
-                    [control] + op0.wires,
-                )
-                muxed_ops.append(new_op)
-            elif isinstance(op0, qml.RY):
-                new_op = MultiplexedFlag(
-                    np.zeros(2,),
-                    np.array([op0.data[0], op1.data[0]]),
-                    [control] + op0.wires,
-                )
-                muxed_ops.append(new_op)
-            else:
-                raise NotImplementedError(f"Can't multiplex {op0} and {op1}.")
+    if n==1:
+        with qml.QueuingManager.stop_recording():
+            for op0, op1 in zip(*ops):
+                assert isinstance(op0, type(op1)) and op0.wires == op1.wires
+                # Check if the operation is static (0 parameters, e.g., CNOT, X, Y, Z)
+                if op0.num_params == 0:
+                    # The gate is identical in both branches, so it acts unconditionally.
+                    muxed_ops.append(op0)
+                elif isinstance(op0, MultiplexedFlag):
+                    new_op = MultiplexedFlag(
+                        np.concatenate([op0.data[0], op1.data[0]]),
+                        np.concatenate([op0.data[1], op1.data[1]]),
+                        controls + op0.wires,
+                    )
+                    muxed_ops.append(new_op)
+                elif isinstance(op0, qml.RZ):
+                    new_op = MultiplexedFlag(
+                        np.array([op0.data[0], op1.data[0]]),
+                        np.zeros(2,),
+                        controls + op0.wires,
+                    )
+                    muxed_ops.append(new_op)
+                elif isinstance(op0, qml.RY):
+                    new_op = MultiplexedFlag(
+                        np.zeros(2,),
+                        np.array([op0.data[0], op1.data[0]]),
+                        controls + op0.wires,
+                    )
+                    muxed_ops.append(new_op)
+                else:
+                    raise NotImplementedError(f"Can't multiplex {op0} and {op1}.")
+        return muxed_ops
+
+    ops0 = mux_ops(ops[:2**(n-1)], controls=controls[1:])
+    ops1 = mux_ops(ops[2**(n-1):], controls=controls[1:])
+    muxed_ops = mux_ops([ops0, ops1], controls=controls[:1])
 
     return muxed_ops
+
+
+def mux_multi_qubit_decomp(mats, mux_wires, target_wires):
+    """Decompose a multiplexed multi-qubit unitary via flag circuits."""
+    if len(target_wires) == 2:
+        two_qubit_decomps = []
+        two_qubit_diags = []
+        for mat in mats:
+            dec, diag = two_qubit_flag_decomp(mat, target_wires)
+            two_qubit_decomps.append(dec)
+            two_qubit_diags.append(diag)
+
+        muxed_ops = mux_ops(two_qubit_decomps, controls=mux_wires)
+        new_ops, new_diag = decompose_mux_single_qubit_flags(muxed_ops)
+        diag = np.concatenate(two_qubit_diags) * new_diag
+        return new_ops, diag
+
+    K00, K01, theta_Y, K10, K11 = zip(*[csd(mat) for mat in mats])
+    K0 = list(chain.from_iterable(zip(K00, K01)))
+    K1 = list(chain.from_iterable(zip(K10, K11)))
+    ops1, diag1 = mux_multi_qubit_decomp(K1, mux_wires + target_wires[:1], target_wires[1:])
+    theta_Y = np.concatenate(theta_Y)
+
+    theta_Z, diag_mid = balance_diagonal(diag1, len(mux_wires))
+    F_A = MultiplexedFlag(theta_Z, theta_Y, mux_wires+target_wires[1:]+target_wires[:1])
+    ops_a, diag_a = decompose_mux_single_qubit_flags([F_A])
+    diag_mid = np.diag(qml.math.expand_matrix(np.diag(diag_mid), wires=mux_wires+target_wires[1:], wire_order=mux_wires+target_wires)) * diag_a
+
+    sub_size = len(K0[0])
+    K0 = [k * diag_mid[sub_size*i : sub_size*(i+1)] for i, k in enumerate(K0)]
+    ops0, diag0 = mux_multi_qubit_decomp(K0, mux_wires + target_wires[:1], target_wires[1:])
+
+    return ops1 + ops_a + ops0, diag0
