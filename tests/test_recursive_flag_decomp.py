@@ -1,4 +1,4 @@
-from functools import partial
+"""Tests for rotoptsynth/recursive_flag_decomp.py"""
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
@@ -16,6 +16,7 @@ from rotoptsynth.recursive_flag_decomp import (
     recursive_flag_decomp,
 )
 
+# pylint: disable=too-few-public-methods
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
@@ -235,7 +236,6 @@ class TestMuxMultiQubitDecomp:
             ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=n_b, break_down=True)
         assert len(q.queue) == 0
 
-        tape = qml.tape.QuantumScript(ops)
         in_mat = qml.math.block_diag(mats)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls + targets)
         assert np.allclose(rec_mat, in_mat)
@@ -282,7 +282,6 @@ class TestMuxMultiQubitDecomp:
             ops, diag = mux_multi_qubit_decomp(mats, controls, targets, n_b=1, break_down=False)
         assert len(q.queue) == 0
 
-        tape = qml.tape.QuantumScript(ops)
         in_mat = qml.math.block_diag(mats)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=controls + targets)
         assert np.allclose(rec_mat, in_mat)
@@ -324,7 +323,7 @@ class TestRecursiveFlagDecompCliffRz:
         assert len(ops) - num_rots == exp_num_cnots
 
 
-class TestRecursiveFlagDecompCliffRz:
+class TestRecursiveFlagDecomp:
     """Test the main recursive flag decomposition function."""
 
     @pytest.mark.parametrize("seed", [932, 2185, 752])

@@ -1,13 +1,15 @@
+"""Tests for rotoptsynth/asymmetric_decomp.py"""
 from functools import partial
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
-
 from rotoptsynth.asymmetric_decomp import _prop_v2, _gamma, _prop_iv3, asymmetric_decomp
+# pylint: disable=too-few-public-methods
 
 
 def make_unit_det(mat):
+    """Transform a matrix to have unit determinant."""
     gphase = np.angle(np.linalg.det(mat)) / len(mat)
     mat = np.exp(-1j * gphase) * mat
     assert np.isclose(np.linalg.det(mat), 1)
@@ -57,9 +59,10 @@ class TestPropositions:
 
 
 @partial(qml.matrix, wire_order=[0, 1])
-def asymmetric_circuit(a, b, c, d, alpha, psi, theta, phi):
+def asymmetric_circuit(one_qubit_unitaries, alpha, psi, theta, phi):
     """Construct PennyLane circuit from data computed by `asymmetric_decomp`.
     Together with the decorator qml.matrix, this computes the implemented matrix."""
+    a, b, c, d = one_qubit_unitaries
     qml.QubitUnitary(c, 0)
     qml.QubitUnitary(d, 1)
     qml.CNOT([0, 1])
