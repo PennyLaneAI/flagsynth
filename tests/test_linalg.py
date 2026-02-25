@@ -1,9 +1,11 @@
 """Tests for rotoptsynth/linalg.py"""
+
 import pytest
 import numpy as np
 from scipy.stats import unitary_group, special_ortho_group
 import pennylane as qml
 from rotoptsynth.linalg import csd, de_mux, balance_diagonal, mottonen
+
 # pylint: disable=too-few-public-methods
 
 

@@ -52,8 +52,8 @@ def two_qubit_flag_decomp(matrix: np.ndarray, wires: list) -> tuple[list, np.nda
         one-dimensional array of length ``4`` representing the diagonal.
     """
 
-    a, b, c, d, alpha, Psi, Theta, Phi = asymmetric_decomp(_cnot @ matrix)
-
+    single_qubit_unitaries, alpha, Psi, Theta, Phi = asymmetric_decomp(_cnot @ matrix)
+    a, b, c, d = single_qubit_unitaries
     phi_a, theta_a, omega_a = zyz_rotation_angles(a)
     phi_c, theta_c, omega_c = zyz_rotation_angles(c)
     phi_d, theta_d, omega_d = zyz_rotation_angles(_y @ d)

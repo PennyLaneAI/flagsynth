@@ -174,7 +174,7 @@ def _core_mat(theta, phi):
     CNOT([0, 1])
 
 
-def asymmetric_decomp(v: np.ndarray) -> list[np.ndarray, float]:
+def asymmetric_decomp(v: np.ndarray) -> tuple[list[np.ndarray], float]:
     """Compute the asymmetric decomposition of a two-qubit unitary matrix from
     `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
     as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and
@@ -184,7 +184,7 @@ def asymmetric_decomp(v: np.ndarray) -> list[np.ndarray, float]:
         v (np.ndarray): Two-qubit unitary matrix to decompose
 
     Returns:
-        list[np.ndarray, float]: Numerical data of the decomposition, as described in Alg. 3
+        tuple[list[np.ndarray], float]: Numerical data of the decomposition, as described in Alg. 3
         of Kottmann et al.
 
     """
@@ -196,6 +196,6 @@ def asymmetric_decomp(v: np.ndarray) -> list[np.ndarray, float]:
     psi, theta, phi = _prop_v2(v_mod)
     v_prime = _ising_zz(psi) @ v_mod
     w = _core_mat(theta, phi)
-    a, b, c, d = _prop_iv3(v_prime, w)
+    single_qubit_unitaries = _prop_iv3(v_prime, w)
 
-    return [a, b, c, d, alpha, -psi, theta, phi]
+    return single_qubit_unitaries, alpha, -psi, theta, phi

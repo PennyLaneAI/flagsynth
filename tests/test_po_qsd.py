@@ -1,10 +1,13 @@
 """Tests for rotoptsynth/po_qsd.py"""
+
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
 from rotoptsynth.po_qsd import po_qsd
+
 # pylint: disable=too-few-public-methods
+
 
 class TestPoQsd:
     """Tests for the main function po_qsd."""

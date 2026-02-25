@@ -1,4 +1,5 @@
 """Tests for rotoptsynth/recursive_flag_decomp.py"""
+
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
@@ -17,6 +18,7 @@ from rotoptsynth.recursive_flag_decomp import (
 )
 
 # pylint: disable=too-few-public-methods
+
 
 class TestOneQubitFlagDecomp:
     """Tests for the one-qubit flag decomposition in `one_qubit_flag_decomp`."""
