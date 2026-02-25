@@ -209,7 +209,8 @@ def mottonen(
 
     return ops
 
-def expand_diagonal_matrix(diag: np.ndarray, wires:list , wire_order:list )->np.ndarray:
+
+def expand_diagonal_matrix(diag: np.ndarray, wires: list, wire_order: list) -> np.ndarray:
     """Expand and/or permute a one-dimensional array as if it was a diagonal matrix acting
     on ``wires`` that needs to be adapted to a new ``wire_order``. This is the analogue
     of ``qml.math.expand_matrix`` for diagonal matrices.

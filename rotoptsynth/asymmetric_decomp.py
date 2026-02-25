@@ -27,7 +27,7 @@ def _gamma(u):
     """Compute complex relative structure for AI decomposition in magic basis rep."""
     # We will apply Y(0)@Y(1) by reordering columns and applying a sign diagonal.
     perm_yy = np.array([-1, 1, 1, -1])
-    return (u[:,::-1] * perm_yy  @ u.T)[:, ::-1] * perm_yy
+    return (u[:, ::-1] * perm_yy @ u.T)[:, ::-1] * perm_yy
 
 
 def _v2_angles(evals):
@@ -156,6 +156,7 @@ def _prop_iv3(u, v):
 
     return a, b, c, d
 
+
 @partial(matrix, wire_order=[0, 1])
 def _core_mat(theta, phi):
     """Compute the combined matrix of
@@ -166,7 +167,8 @@ def _core_mat(theta, phi):
     RZ(phi, 1)
     CNOT([0, 1])
 
-def asymmetric_decomp(v: np.ndarray)->list[np.ndarray, float]:
+
+def asymmetric_decomp(v: np.ndarray) -> list[np.ndarray, float]:
     """Compute the asymmetric decomposition of a two-qubit unitary matrix from
     `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
     as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and

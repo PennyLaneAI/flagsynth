@@ -37,7 +37,7 @@ _y = qml.RY(-np.pi / 2, 0).matrix()
 
 
 @qml.QueuingManager.stop_recording()
-def two_qubit_flag_decomp(v: np.ndarray, wires: list)->tuple[list,np.ndarray]:
+def two_qubit_flag_decomp(v: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """Two-qubit flag decomposition as described in Alg. 4 in App. A of
     `Kottmann et al. <arxiv.org/abs/unknown.id>`__.
 
@@ -84,6 +84,7 @@ def two_qubit_flag_decomp(v: np.ndarray, wires: list)->tuple[list,np.ndarray]:
 
     return F, Delta
 
+
 @partial(qml.matrix, wire_order=[0])
 def _flag(theta_z, theta_y):
     """Single qubit flag matrix."""
@@ -91,7 +92,9 @@ def _flag(theta_z, theta_y):
     qml.RY(theta_y, 0)
 
 
-def _decompose_mux_single_qubit_flag_base_case(theta_z: np.ndarray, theta_y: np.ndarray, wires:list):
+def _decompose_mux_single_qubit_flag_base_case(
+    theta_z: np.ndarray, theta_y: np.ndarray, wires: list
+):
     """Decomposition of a singly-multiplexed single-qubit flag circuit into
     one entangler, four single-qubit rotations, and a diagonal, as described in
     `Bergholm et al. <https://arxiv.org/abs/quant-ph/0410066>`__.
@@ -213,6 +216,7 @@ def _merge_diag_into_mux(op, main_diag, main_diag_wires):
     op = MultiplexedFlag(op.data[0] + theta_broad, op.data[1], op.wires)
     return op, main_diag, main_diag_wires
 
+
 class CollectionOfDiagonals:
 
     def __init__(self):
@@ -315,11 +319,11 @@ def mux_ops(ops: list, controls: list) -> list:
 
             match op0:
                 case qml.RZ():
-                    theta_z = np.array([op0.data[0], op1.data[0]]),
+                    theta_z = (np.array([op0.data[0], op1.data[0]]),)
                     theta_y = np.zeros(2)
                 case qml.RZ():
                     theta_z = np.zeros(2)
-                    theta_y = np.array([op0.data[0], op1.data[0]]),
+                    theta_y = (np.array([op0.data[0], op1.data[0]]),)
                 case MultiplexedFlag():
                     theta_z = np.concatenate([op0.data[0], op1.data[0]])
                     theta_y = np.concatenate([op0.data[1], op1.data[1]])
@@ -340,7 +344,9 @@ def mux_ops(ops: list, controls: list) -> list:
 
 
 @qml.QueuingManager.stop_recording()
-def mux_multi_qubit_decomp(mats: list[np.ndarray], mux_wires: list, target_wires: list, n_b: int, break_down: bool):
+def mux_multi_qubit_decomp(
+    mats: list[np.ndarray], mux_wires: list, target_wires: list, n_b: int, break_down: bool
+):
     """Decompose a multiplexed multi-qubit unitary via flag circuits.
 
     Args:
@@ -386,7 +392,7 @@ def mux_multi_qubit_decomp(mats: list[np.ndarray], mux_wires: list, target_wires
     theta_y = np.concatenate(theta_y)
     ops_a = [MultiplexedFlag(theta_z, theta_y, mux_wires + new_targets + new_mux)]
 
-    diag_mid = expand_diagonal_matrix(diag_mid, mux_wires+new_targets, mux_wires+target_wires)
+    diag_mid = expand_diagonal_matrix(diag_mid, mux_wires + new_targets, mux_wires + target_wires)
     if break_down:
         # Decompose the multiplexer if break_down is requested.
         ops_a, diag_a = decompose_mux_single_qubit_flags(ops_a)
@@ -400,6 +406,7 @@ def mux_multi_qubit_decomp(mats: list[np.ndarray], mux_wires: list, target_wires
     ops0, diag0 = mux_multi_qubit_decomp(K0, mux_wires + new_mux, new_targets, n_b, break_down)
 
     return ops1 + ops_a + ops0, diag0
+
 
 def _selective_de_multiplexed_branch(V, wires, n_b):
     """Selective de-multiplexing branch of recursive_flag_decomp_cliff_rz."""
@@ -438,8 +445,8 @@ def _selective_de_multiplexed_branch(V, wires, n_b):
         @ _cz
     )
     n = len(wires)
-    K00 = re_mux_rhs[: 2 ** (n - 1), : 2 ** (n - 1)]* Delta_prime
-    K01 = re_mux_rhs[2 ** (n - 1) :, 2 ** (n - 1) :]* Delta_prime
+    K00 = re_mux_rhs[: 2 ** (n - 1), : 2 ** (n - 1)] * Delta_prime
+    K01 = re_mux_rhs[2 ** (n - 1) :, 2 ** (n - 1) :] * Delta_prime
     return F_top, K00, K01
 
 
@@ -468,6 +475,7 @@ def _non_de_multiplexed_branch(V, wires, n_b):
     # attach a multiplexer control to F10 and F11 based on the target qubit
     F_top = F_top + F_A
     return F_top, K00, K01
+
 
 @qml.QueuingManager.stop_recording()
 def recursive_flag_decomp_cliff_rz(
