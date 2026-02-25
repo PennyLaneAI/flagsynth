@@ -1,4 +1,6 @@
-import copy
+"""This module contains recursive flag decompositions, both into {Clifford+Rot} gates and into
+multiplexed single-qubit flags, represented as ``MultiplexedFlag`` objects."""
+
 from functools import partial, singledispatchmethod
 from itertools import chain
 
@@ -13,20 +15,20 @@ from .multiplexed_flag import MultiplexedFlag
 
 
 @qml.QueuingManager.stop_recording()
-def one_qubit_flag_decomp(V: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
+def one_qubit_flag_decomp(matrix: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """
     Implements the one-qubit flag decomposition returning the two-gate flag circuit
     and the trailing two-element diagonal. This is based on a standard Euler decomposition.
 
     Args:
-        V (np.ndarray): Matrix of shape ``(2, 2)`` to be decomposed.
+        matrix (np.ndarray): Matrix of shape ``(2, 2)`` to be decomposed.
         wires (list): Wires on which the operations should act. Should have length 1.
 
     Returns:
         tuple[list, np.ndarray]: List of a single operation (a ``MultiplexedFlag``) and a
         one-dimensional array of length ``2`` representing the diagonal.
     """
-    phi, theta, omega, alpha = zyz_rotation_angles(V, return_global_phase=True)
+    phi, theta, omega, alpha = zyz_rotation_angles(matrix, return_global_phase=True)
     F = [MultiplexedFlag(phi, theta, wires)]
     Delta = np.exp(1j * np.array([-omega / 2 + alpha, omega / 2 + alpha]))
     return F, Delta
@@ -37,12 +39,12 @@ _y = qml.RY(-np.pi / 2, 0).matrix()
 
 
 @qml.QueuingManager.stop_recording()
-def two_qubit_flag_decomp(v: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
+def two_qubit_flag_decomp(matrix: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """Two-qubit flag decomposition as described in Alg. 4 in App. A of
     `Kottmann et al. <arxiv.org/abs/unknown.id>`__.
 
     Args:
-        V (np.ndarray): Matrix of shape ``(4, 4)`` to be decomposed.
+        matrix (np.ndarray): Matrix of shape ``(4, 4)`` to be decomposed.
         wires (list): Wires on which the operations should act. Should have length 2.
 
     Returns:
@@ -50,7 +52,7 @@ def two_qubit_flag_decomp(v: np.ndarray, wires: list) -> tuple[list, np.ndarray]
         one-dimensional array of length ``4`` representing the diagonal.
     """
 
-    a, b, c, d, alpha, Psi, Theta, Phi = asymmetric_decomp(_cnot @ v)
+    a, b, c, d, alpha, Psi, Theta, Phi = asymmetric_decomp(_cnot @ matrix)
 
     phi_a, theta_a, omega_a = zyz_rotation_angles(a)
     phi_c, theta_c, omega_c = zyz_rotation_angles(c)
@@ -218,21 +220,36 @@ def _merge_diag_into_mux(op, main_diag, main_diag_wires):
 
 
 class CollectionOfDiagonals:
+    """A collection of diagonals acting on individual sets of wires. An instance is supposed to
+    be created without any data, and individual diagonals and their wires should be added
+    via ``CollectionOfDiagonals.append``. The key functionality of this class is in
+    ``move_through_op``, which computes the effect of moving the diagonals through a circuit
+    operation on both the diagonals and the operation itself.
+
+    This class is used in ``decompose_mux_single_qubit_flags``.
+    """
 
     def __init__(self):
         self.diagonals = []
         self.diag_wires = []
 
     def append(self, diagonal, wires):
+        """Add a diagonal and the wires it acts on to the collection."""
         self.diagonals.append(diagonal)
         self.diag_wires.append(wires)
 
     @singledispatchmethod
     def move_through_op(self, op: Operation):
-        raise NotImplementedError("Moving diagonals through {op=} is not supported.")
+        """Move all diagonals through a quantum circuit operation, modifying the diagonals and
+        the wires they act on, as well as the operation itself.
+
+        This function is dispatched based on the type of the circuit operation."""
+        raise NotImplementedError(f"Moving diagonals through {op=} is not supported.")
 
     @move_through_op.register
     def _(self, op: MultiplexedFlag):
+        """Move diagonals through a ``MultiplexedFlag``. This is described in
+        App. C2 of Kottmann et al."""
         for j, (d, d_wires) in enumerate(zip(self.diagonals, self.diag_wires, strict=True)):
             if op.wires[-1] in d_wires:
                 assert all(
@@ -248,23 +265,31 @@ class CollectionOfDiagonals:
         return ops
 
     @move_through_op.register
-    def _(self, op: qml.CZ):
-        # Can just commute through a CZ.
+    def _(self, op: qml.CZ | qml.RZ):
+        """Just commute diagonals through a ``CZ`` or an ``RZ`` gate, as they commute."""
         return [op]
 
     @move_through_op.register
     def _(self, op: qml.CNOT):
-        # Can just commute through a CNOT if the diagonal only overlaps with the control wire
+        """Just commute diagonals through a ``CNOT`` gate if (and only if) the diagonals
+        only overlap with the control qubit of the ``CNOT``, not with the target."""
         assert all(op.wires[1] not in d_wires for d_wires in self.diag_wires)
         return [op]
 
     @move_through_op.register
-    def _(self, op: qml.RZ | qml.RY):
-        # Can just commute through an RY/RZ if the diagonal does not overlap with the op wire
+    def _(self, op: qml.RY):
+        """We can commute diagonals through a ``RY`` gate if (and only if) the diagonals
+        do not overlap with the qubit of the ``RY``."""
         assert all(op.wires[0] not in d_wires for d_wires in self.diag_wires)
         return [op]
 
     def merge_all(self, wires):
+        """Merge all diagonals in the ``CollectionOfDiagonals``, respecting and combining the
+        individual wires they act on.
+
+        Args:
+            wire_order (list): Wire ordering to which the merged diagonal should be adapted.
+        """
         merged = np.ones(2 ** len(wires), dtype=complex)
         for d, d_wires in zip(self.diagonals, self.diag_wires, strict=True):
             merged *= expand_diagonal_matrix(d, d_wires, wires)
@@ -408,9 +433,9 @@ def mux_multi_qubit_decomp(
     return ops1 + ops_a + ops0, diag0
 
 
-def _selective_de_multiplexed_branch(V, wires, n_b):
+def _selective_de_multiplexed_branch(matrix, wires, n_b):
     """Selective de-multiplexing branch of recursive_flag_decomp_cliff_rz."""
-    K00, K01, theta_Y, K10, K11 = csd(V)
+    K00, K01, theta_Y, K10, K11 = csd(matrix)
     controls = wires[1:]
     target = wires[0]
 
@@ -450,10 +475,10 @@ def _selective_de_multiplexed_branch(V, wires, n_b):
     return F_top, K00, K01
 
 
-def _non_de_multiplexed_branch(V, wires, n_b):
+def _non_de_multiplexed_branch(matrix, wires, n_b):
     """Non-de-multiplexing branch of recursive_flag_decomp_cliff_rz."""
     # 1. Cosine-Sine Decomposition
-    K00, K01, theta_Y, K10, K11 = csd(V)
+    K00, K01, theta_Y, K10, K11 = csd(matrix)
     controls = wires[1:]
     target = wires[:1]
 
@@ -479,14 +504,14 @@ def _non_de_multiplexed_branch(V, wires, n_b):
 
 @qml.QueuingManager.stop_recording()
 def recursive_flag_decomp_cliff_rz(
-    V: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False
+    matrix: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False
 ) -> tuple[list, np.ndarray]:
     """Recursive flag decomposition as used within the parameter-optimal Quantum
     Shannon Decomposition.
 
     Args:
-        V (np.ndarray): Unitary matrix to decompose.
-        wires (list): Wires on which ``V`` acts.
+        matrix (np.ndarray): Unitary matrix to decompose.
+        wires (list): Wires on which ``matrix`` acts.
         n_b (int): Base case decomposition to use
         selective_demux (bool): Whether to use selective de-multiplexing.
 
@@ -499,9 +524,9 @@ def recursive_flag_decomp_cliff_rz(
 
     # Base cases
     if n_b == 1 and n == 1:
-        return one_qubit_flag_decomp(V, wires)
+        return one_qubit_flag_decomp(matrix, wires)
     if n_b == 2 and n == 2:
-        ops, diag = two_qubit_flag_decomp(V, wires)
+        ops, diag = two_qubit_flag_decomp(matrix, wires)
         ops, _ = decompose_mux_single_qubit_flags(ops)
         return ops, diag
 
@@ -509,9 +534,9 @@ def recursive_flag_decomp_cliff_rz(
     target = wires[:1]
 
     if selective_demux:
-        F_top, K00, K01 = _selective_de_multiplexed_branch(V, wires, n_b)
+        F_top, K00, K01 = _selective_de_multiplexed_branch(matrix, wires, n_b)
     else:
-        F_top, K00, K01 = _non_de_multiplexed_branch(V, wires, n_b)
+        F_top, K00, K01 = _non_de_multiplexed_branch(matrix, wires, n_b)
 
     # Common continuation for K00 and K01 blocks
     F_bottom, Delta_out = mux_multi_qubit_decomp(
@@ -524,21 +549,21 @@ def recursive_flag_decomp_cliff_rz(
     return F_top + F_bottom, Delta_out
 
 
-def recursive_flag_decomp(V: np.ndarray, wires):
+def recursive_flag_decomp(matrix: np.ndarray, wires):
     """Recursive flag decomposition to the phase gradient gate set.
 
     Args:
-        V (np.ndarray): Unitary matrix to decompose.
-        wires (list): Wires on which ``V`` acts.
+        matrix (np.ndarray): Unitary matrix to decompose.
+        wires (list): Wires on which ``matrix`` acts.
 
     Returns:
         list: List of multiplexers and a diagonal Operation (``qml.DiagonalQubitUnitary``)
-        implementing ``V``.
+        implementing ``matrix``.
 
     Note that this function queues the decomposition it computes to the queuing system in
     PennyLane.
     """
-    ops, diag = mux_multi_qubit_decomp([V], [], wires, n_b=1, break_down=False)
+    ops, diag = mux_multi_qubit_decomp([matrix], [], wires, n_b=1, break_down=False)
     if qml.QueuingManager.recording():
         for op in ops:
             qml.apply(op)

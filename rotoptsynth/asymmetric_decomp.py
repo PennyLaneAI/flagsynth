@@ -1,3 +1,9 @@
+"""This module contains the asymmetric two-qubit decomposition from
+`Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
+as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and
+in Alg. 3 in particular.
+"""
+
 from functools import partial
 
 import numpy as np

@@ -1,3 +1,5 @@
+"""This module contains linear algebraic helper methods for the ``rotoptsynth`` package."""
+
 import numpy as np
 import pennylane as qml
 from pennylane.templates.state_preparations.mottonen import _uniform_rotation_dagger_ops

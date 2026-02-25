@@ -18,7 +18,7 @@ def _fixed_qubit_unitary_decomp(matrix, wires):
     if len(matrix) == 4:
         return qml.ops.two_qubit_decomposition(matrix, wires)
     assert len(matrix) == 2
-    return qml.ops.op_math.decompositions.unitary_decompositions.zyz_decomp_rule(U, wires)
+    return qml.ops.op_math.decompositions.unitary_decompositions.zyz_decomp_rule(matrix, wires)
 
 
 def _two_qubit_unitary(matrix, wires):
