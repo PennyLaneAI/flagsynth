@@ -119,3 +119,4 @@ U = unitary_group.rvs(2**n, random_state=81212)
 
 ## License
 
+See LICENSE.md file.
