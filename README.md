@@ -6,16 +6,16 @@ Kottmann et al. [arXiv:unknown.id](https://arxiv.org/abs/unknown.id)
 ## Installation
 
 ```
-git clone git@github.com:XanaduAI/rotoptsynth.git
-cd rotoptsynth
+git clone git@github.com:XanaduAI/flagsynth.git
+cd flagsynth
 pip install .
 ```
 
 ## Main functionality
 
-The primary functionality of this package consists of the functions `rotoptsynth.po_qsd`,
+The primary functionality of this package consists of the functions `flagsynth.po_qsd`,
 implementing the parameter-optimal Quantum Shannon Decomposition (PO-QSD)
-into the {Clifford+Rot} gate set, and `rotoptsynth.recursive_flag_decomp`, decomposing into 
+into the {Clifford+Rot} gate set, and `flagsynth.recursive_flag_decomp`, decomposing into 
 QROMs and adders onto a resource phase gradient state.
 These functions are written to be used with [PennyLane](pennylane.ai) and return sequences of
 PennyLane gates. They respect PennyLane's queuing system and thus can be used as-is
@@ -23,14 +23,14 @@ in `qml.QNode`s.
 
 ### Examples
 
-Let's look at an example usage of `rotoptsynth.po_qsd` and validate that it correctly implements
+Let's look at an example usage of `flagsynth.po_qsd` and validate that it correctly implements
 a (randomly sampled) target matrix:
 
 ```python3
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
-import rotoptsynth as ros
+import flagsynth as fs
 
 # Pick some system size and generate a target with that size.
 n = 3
@@ -38,14 +38,14 @@ U = unitary_group.rvs(2**n, random_state=129)
 wires = list(range(n))
 ```
 ```pycon
->>> implemented_matrix = qml.matrix(ros.po_qsd, wire_order=wires)(U, wires)
+>>> implemented_matrix = qml.matrix(fs.po_qsd, wire_order=wires)(U, wires)
 >>> np.allclose(implemented_matrix, U)
 True
 ```
 
 We may also look at the synthesized circuit:
 ```pycon
->>> print(qml.draw(ros.po_qsd)(U, wires))
+>>> print(qml.draw(fs.po_qsd)(U, wires))
 0: ──RZ(-0.75)────────────────────────────────────────────────────────────╭X──RZ(0.57)─╭X ···
 1: ──RZ(0.94)───RY(1.72)─╭●──RZ(10.22)──RY(-1.99)─╭●──RZ(-1.00)──RY(1.12)─│────────────╰● ···
 2: ──RZ(3.70)───RY(1.45)─╰Z──RZ(11.37)──RY(1.02)──╰Z──RZ(7.12)───RY(2.14)─╰●───────────── ···
@@ -82,7 +82,7 @@ on desired work qubit usage). See the paper for details.
 >>> n = 4
 >>> wires = list(range(n))
 >>> U = unitary_group.rvs(2**n, random_state=81512)
->>> print(qml.draw(ros.recursive_flag_decomp, show_matrices=False)(U, wires))
+>>> print(qml.draw(fs.recursive_flag_decomp, show_matrices=False)(U, wires))
 0: ─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭⚑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭◑─╭U(M0)─┤  
 1: ─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├◑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├U(M0)─┤  
 2: ─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├◑─├◑─├⚑─├◑─├U(M0)─┤  
@@ -94,7 +94,7 @@ a diagonal on all qubits. It can be decomposed similarly to a multiplexed ``RZ``
 
 ## Usage with PennyLane
 
-Until the functionality is merged into PennyLane itself, ``rotoptsynth`` registers the
+Until the functionality is merged into PennyLane itself, ``flagsynth`` registers the
 main functionalities as decompositions of ``qml.QubitUnitary``, using 
 the graph-based decomposition system:
 

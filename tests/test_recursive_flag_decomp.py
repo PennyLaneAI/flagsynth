@@ -1,4 +1,4 @@
-"""Tests for rotoptsynth/recursive_flag_decomp.py"""
+"""Tests for flagsynth/recursive_flag_decomp.py"""
 
 import pytest
 import numpy as np
@@ -6,8 +6,8 @@ from scipy.stats import unitary_group
 import pennylane as qml
 from pennylane.wires import Wires
 
-from rotoptsynth.multiplexed_flag import MultiplexedFlag
-from rotoptsynth.recursive_flag_decomp import (
+from flagsynth.multiplexed_flag import MultiplexedFlag
+from flagsynth.recursive_flag_decomp import (
     one_qubit_flag_decomp,
     two_qubit_flag_decomp,
     mux_ops,

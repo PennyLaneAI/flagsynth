@@ -5,14 +5,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rotoptsynth"
+name = "flagsynth"
 version = "0.1"
 authors = [
   { name="Korbinian Kottmann" },
+  { name="David Wierichs" },
   { name="Guillermo Alonso" },
-  { name="David Wierichs" }
+  { name="Nathan Killoran" }
 ]
-description = "Rotation-optimal unitary synthesis."
+description = "Parameter-optimal unitary synthesis with flag decompositions."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

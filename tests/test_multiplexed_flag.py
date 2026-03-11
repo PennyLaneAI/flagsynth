@@ -1,10 +1,10 @@
-"""Tests for rotoptsynth/multiplexed_flag.py"""
+"""Tests for flagsynth/multiplexed_flag.py"""
 
 import pytest
 import numpy as np
 import pennylane as qml
 from pennylane.ops.functions import assert_valid
-from rotoptsynth.multiplexed_flag import MultiplexedFlag
+from flagsynth.multiplexed_flag import MultiplexedFlag
 
 
 class TestMultiplexedFlag:

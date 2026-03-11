@@ -1,11 +1,11 @@
-"""Tests for rotoptsynth/asymmetric_decomp.py"""
+"""Tests for flagsynth/asymmetric_decomp.py"""
 
 from functools import partial
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
-from rotoptsynth.asymmetric_decomp import _prop_v2, _gamma, _prop_iv3, asymmetric_decomp
+from flagsynth.asymmetric_decomp import _prop_v2, _gamma, _prop_iv3, asymmetric_decomp
 
 # pylint: disable=too-few-public-methods
 
