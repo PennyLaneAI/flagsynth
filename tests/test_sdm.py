@@ -1,16 +1,16 @@
-"""Tests for flagsynth/po_qsd.py"""
+"""Tests for flagsynth/sdm.py"""
 
 import pytest
 import numpy as np
 from scipy.stats import unitary_group
 import pennylane as qml
-from flagsynth.po_qsd import po_qsd
+from flagsynth.sdm import sdm
 
 # pylint: disable=too-few-public-methods
 
 
-class TestPoQsd:
-    """Tests for the main function po_qsd."""
+class TestSdm:
+    """Tests for the main function sdm."""
 
     @pytest.mark.parametrize("seed", [932, 2185])
     @pytest.mark.parametrize("n", [2, 3, 4, 5, 6])
@@ -18,7 +18,7 @@ class TestPoQsd:
         """Test main usage."""
         targets = list(range(n))
         V = unitary_group.rvs(2**n, random_state=seed)
-        ops = po_qsd(V, targets)
+        ops = sdm(V, targets)
         rec_mat = qml.matrix(ops, wire_order=targets)
         assert np.allclose(rec_mat, V)
         exp_types = (qml.RZ, qml.RY, qml.CZ, qml.CNOT, qml.GlobalPhase)

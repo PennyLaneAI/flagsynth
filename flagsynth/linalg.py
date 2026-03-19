@@ -1,4 +1,4 @@
-"""This module contains linear algebraic helper methods for the ``rotoptsynth`` package."""
+"""This module contains linear algebraic helper methods for the ``flagsynth`` package."""
 
 import numpy as np
 import pennylane as qml

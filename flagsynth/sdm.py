@@ -1,5 +1,5 @@
-"""This module implements the main function for the parameter-optimal Quantum
-Shannon Decomposition."""
+"""This module implements the main function for the parameter-optimal selective
+de-multiplexing synthesis technique."""
 
 import numpy as np
 import pennylane as qml
@@ -34,8 +34,8 @@ def _two_qubit_unitary(matrix, wires):
     return tape.operations
 
 
-def po_qsd(matrix: np.ndarray, wires: list) -> list:
-    r"""Implements the Parameter-Optimal Quantum Shannon Decomposition (PO-QSD).
+def sdm(matrix: np.ndarray, wires: list) -> list:
+    r"""Implements selective de-multiplexing.
 
     Args:
         matrix (np.ndarray): Matrix to implement
@@ -48,7 +48,7 @@ def po_qsd(matrix: np.ndarray, wires: list) -> list:
     Note that this function queues the decomposition it computes to the queuing system in
     PennyLane.
 
-    The PO-QSD decomposes an :math:`n`-qubit matrix of size :math:`2^n\times 2^n` into
+    SDM decomposes an :math:`n`-qubit matrix of size :math:`2^n\times 2^n` into
     :math:`4^n-1` rotation gates and :math:`\frac12 4^n - \frac38 (n + 2) 2^n + n - 1`
     entanglers (``qml.CZ`` and ``qml.CNOT``).
 
@@ -82,8 +82,8 @@ def po_qsd(matrix: np.ndarray, wires: list) -> list:
         ops_10, Delta_10 = recursive_flag_decomp_cliff_rz(M10_new * Delta_11, controls, **rec_kw)
         ops_01, Delta_01 = recursive_flag_decomp_cliff_rz(M01_new * Delta_10, controls, **rec_kw)
 
-        # Recurse PO-QSD on the final modified M00 block
-        ops_00 = po_qsd(M00 * Delta_01, controls)
+        # Recurse SDM on the final modified M00 block
+        ops_00 = sdm(M00 * Delta_01, controls)
 
         mux_z_rot_1 = mottonen(theta_Z_1, controls, target, axis="Z", symmetrized="right")
         mux_y_rot = mottonen(theta_y_new, controls, target, axis="Y")
@@ -96,7 +96,7 @@ def po_qsd(matrix: np.ndarray, wires: list) -> list:
     return circuit
 
 
-def _po_qsd_resources(num_wires):
+def _sdm_resources(num_wires):
     n = num_wires
     exp_num_cnots = 4**n // 2 - 3 * (n + 2) * 2**n // 8 + n - 1
     return {
@@ -107,5 +107,5 @@ def _po_qsd_resources(num_wires):
     }
 
 
-po_qsd_rule = register_resources(_po_qsd_resources, po_qsd, exact=False)
-add_decomps(qml.QubitUnitary, po_qsd_rule)
+sdm_rule = register_resources(_sdm_resources, sdm, exact=False)
+add_decomps(qml.QubitUnitary, sdm_rule)

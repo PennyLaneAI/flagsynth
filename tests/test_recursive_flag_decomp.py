@@ -297,14 +297,14 @@ class TestRecursiveFlagDecompCliffRz:
     @pytest.mark.parametrize("seed", [932, 2185, 752])
     @pytest.mark.parametrize("num_targets", [2, 3, 4, 5])
     @pytest.mark.parametrize("n_b", [1, 2])
-    @pytest.mark.parametrize("selective_demux", [True, False])
-    def test_main_usage(self, seed, num_targets, n_b, selective_demux):
+    @pytest.mark.parametrize("use_sdm", [True, False])
+    def test_main_usage(self, seed, num_targets, n_b, use_sdm):
         """Test main usage."""
-        if n_b == 1 and selective_demux:
+        if n_b == 1 and use_sdm:
             pytest.skip(reason="We never use this scenario.")
         targets = list(range(num_targets))
         V = unitary_group.rvs(2**num_targets, random_state=seed)
-        ops, diag = recursive_flag_decomp_cliff_rz(V, targets, n_b, selective_demux)
+        ops, diag = recursive_flag_decomp_cliff_rz(V, targets, n_b, use_sdm)
         rec_mat = np.diag(diag) @ qml.matrix(ops, wire_order=targets)
         assert np.allclose(rec_mat, V)
         assert all(
@@ -315,7 +315,7 @@ class TestRecursiveFlagDecompCliffRz:
         assert num_rots == (4**n - 2**n)
 
         if n_b == 2:
-            if selective_demux:
+            if use_sdm:
                 exp_num_cnots = 4**n // 2 - (n + 12) * 2**n // 8 + 1  # Eq. (D26)
             else:
                 exp_num_cnots = (4**n - 2**n) // 2 - 5 * 2**n // 4 + 1  # Eq. (D27)

@@ -62,14 +62,17 @@ def two_qubit_flag_decomp(matrix: np.ndarray, wires: list) -> tuple[list, np.nda
     _ops = [qml.RX(omega_e, wires[1])]
     phi_f, theta_f, omega_f = zyz_rotation_angles(b @ qml.matrix(_ops, wires[1:]) @ _y.conj().T)
 
+    omega_c += np.pi / 2
+    phi_a -= np.pi / 2
+
     F = [
         MultiplexedFlag(phi_c, theta_c, wires[0]),
         MultiplexedFlag(phi_d, theta_d, wires[1]),
         qml.CZ(wires),
-        MultiplexedFlag(omega_c + np.pi / 2, Theta, wires[0]),
+        MultiplexedFlag(omega_c, Theta, wires[0]),
         MultiplexedFlag(phi_e, theta_e, wires[1]),
         qml.CZ(wires),
-        MultiplexedFlag(phi_a - np.pi / 2, theta_a, wires[0]),
+        MultiplexedFlag(phi_a, theta_a, wires[0]),
         MultiplexedFlag(phi_f, theta_f, wires[1]),
     ]
     Delta = np.diag(
@@ -427,22 +430,21 @@ def mux_multi_qubit_decomp(
     sub_size = len(K0[0])
     K0 = [k * diag_mid[sub_size * i : sub_size * (i + 1)] for i, k in enumerate(K0)]
 
-    # Recurse on the first circuit part, multiplexed K10 and K11
+    # Recurse on the second circuit part, multiplexed K00 and K01
     ops0, diag0 = mux_multi_qubit_decomp(K0, mux_wires + new_mux, new_targets, n_b, break_down)
 
     return ops1 + ops_a + ops0, diag0
 
 
-def _selective_de_multiplexed_branch(matrix, wires, n_b):
+def _sdm_branch(matrix, wires, n_b):
     """Selective de-multiplexing branch of recursive_flag_decomp_cliff_rz."""
     K00, K01, theta_Y, K10, K11 = csd(matrix)
     controls = wires[1:]
     target = wires[0]
 
-    # Selective de-multiplexing branch
     M10, theta_Z_prime, M11 = de_mux(K10, K11)
 
-    F11, Delta = recursive_flag_decomp_cliff_rz(M11, controls, n_b=n_b, selective_demux=True)
+    F11, Delta = recursive_flag_decomp_cliff_rz(M11, controls, n_b=n_b, use_sdm=True)
     F11, Delta_11_mod = decompose_mux_single_qubit_flags(F11)
     Delta = Delta * Delta_11_mod
 
@@ -453,7 +455,7 @@ def _selective_de_multiplexed_branch(matrix, wires, n_b):
     M01_new, theta_Y_new, M10_new = re_and_de_mux(M01, M10, theta_Y, wires, side="left")
 
     F10, Delta_prime = recursive_flag_decomp_cliff_rz(
-        M10_new * Delta, controls, n_b=n_b, selective_demux=True
+        M10_new * Delta, controls, n_b=n_b, use_sdm=True
     )
     F10, Delta_10_mod = decompose_mux_single_qubit_flags(F10)
     Delta_prime = Delta_prime * Delta_10_mod
@@ -504,7 +506,7 @@ def _non_de_multiplexed_branch(matrix, wires, n_b):
 
 @qml.QueuingManager.stop_recording()
 def recursive_flag_decomp_cliff_rz(
-    matrix: np.ndarray, wires: list, n_b: int = 2, selective_demux: bool = False
+    matrix: np.ndarray, wires: list, n_b: int = 2, use_sdm: bool = False
 ) -> tuple[list, np.ndarray]:
     """Recursive flag decomposition as used within the parameter-optimal Quantum
     Shannon Decomposition.
@@ -513,7 +515,7 @@ def recursive_flag_decomp_cliff_rz(
         matrix (np.ndarray): Unitary matrix to decompose.
         wires (list): Wires on which ``matrix`` acts.
         n_b (int): Base case decomposition to use
-        selective_demux (bool): Whether to use selective de-multiplexing.
+        use_sdm (bool): Whether to use selective de-multiplexing (SDM).
 
     Returns:
         tuple[list, np.ndarray]: List of operations and a one-dimensional array
@@ -533,8 +535,8 @@ def recursive_flag_decomp_cliff_rz(
     controls = wires[1:]
     target = wires[:1]
 
-    if selective_demux:
-        F_top, K00, K01 = _selective_de_multiplexed_branch(matrix, wires, n_b)
+    if use_sdm:
+        F_top, K00, K01 = _sdm_branch(matrix, wires, n_b)
     else:
         F_top, K00, K01 = _non_de_multiplexed_branch(matrix, wires, n_b)
 
