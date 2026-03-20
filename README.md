@@ -90,7 +90,7 @@ on desired work qubit usage). See the paper for details.
 ```
 
 Note the trailing ``U(M0)`` which denotes a ``qml.DiagonalQubitUnitary`` operation, i.e.,
-a diagonal on all qubits. It can be decomposed similarly to a multiplexed ``RZ`` gate.
+a diagonal on all qubits. It can be decomposed similarly to multiplexed ``RZ`` gates.
 
 ## Usage with PennyLane
 
