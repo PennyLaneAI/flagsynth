@@ -3,7 +3,7 @@
 import numpy as np
 import pennylane as qml
 from pennylane.templates.state_preparations.mottonen import _uniform_rotation_dagger_ops
-from scipy.linalg import cossin
+from scipy.linalg import cossin, det
 
 
 def csd(V: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -35,6 +35,60 @@ def csd(V: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, 
     theta *= 2.0
 
     return K00, K01, theta, K10, K11
+
+
+def real_csd(matrix, validate=False):
+    """BDI(p, q) Cartan decomposition of special orthogonal ``matrix``. Adapted from
+    https://github.com/dwierichs/kak-tools.
+
+    Args:
+        matrix (np.ndarray): The special orthogonal matrix to decompose. It must be
+            square-shaped with size p+q.
+        p (int): First subspace size for SO(p) x SO(q), the vertical subspace
+        q (int): Second subspace size for SO(p) x SO(q), the vertical subspace
+
+    Returns:
+        np.ndarray: The first K from the KAK decomposition
+        np.ndarray: The exponentiated Cartan subalgebra element A from the KAK decomposition
+        np.ndarray: The second K from the KAK decomposition
+
+
+    The input ``matrix`` and all three output matrices are group elements, not algebra elements.
+    """
+    p = matrix.shape[0] // 2
+
+    (K00, K01), theta, (K10, K11) = cossin(matrix, p=p, q=p, separate=True)
+
+    # banish negative determinants
+    d00, d01 = det(K00), det(K01)
+    d10, d11 = det(K10), det(K11)
+    assert np.isclose(d00 * d01 * d10 * d11, 1.0), f"{d1p * d1q * d2p * d2q} should be 1."
+
+    K00[:, 0] *= d00
+    K01[:, 0] *= d01
+    K10[0] *= d10
+    K11[0] *= d11
+
+    # TODO
+    theta[0] *= d00 * d01
+    if d00 * d10 < 0:
+        theta[0] += np.pi
+
+    if validate:
+        assert np.allclose(K00 @ K00.T, np.eye(p))
+        assert np.allclose(K01 @ K01.T, np.eye(p))
+        assert np.allclose(K10 @ K10.T, np.eye(p))
+        assert np.allclose(K11 @ K11.T, np.eye(p))
+
+        f = np.block([[np.diag(np.cos(theta)), -np.diag(np.sin(theta))], [np.diag(np.sin(theta)), np.diag(np.cos(theta))]])
+        K0 = np.block([[K00, 0*K00], [0*K01, K01]])
+        K1 = np.block([[K10, 0*K10], [0*K11, K11]])
+        assert np.allclose(K0 @ f @ K1, matrix), f"\n{K0}\n{f}\n{K1}\n{K0 @ f @ K1}\n{matrix}"
+        assert np.allclose([det(K00), det(K01), det(K10), det(K11)], 1.0)
+
+    theta *= 2
+    return K00, K01, theta, K10, K11
+
 
 
 def de_mux(K0: np.ndarray, K1: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
