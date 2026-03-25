@@ -3,7 +3,7 @@ to either the {Clifford+Rot} gate set or multiplexed single-qubit flags / rotati
 decomposed further into ``QROM``s, and ``Adder``s onto a phase gradient state.
 
 This code accompanies the preprint "Parameter-optimal unitary synthesis with flag decompositions"
-by Kottmann et al. `arXiv:unknown.id <arxiv.org/abs/unknown.id>`__.
+by Kottmann et al. `arXiv:2603.20376 <arxiv.org/abs/2603.20376>`__.
 """
 
 from .asymmetric_decomp import asymmetric_decomp

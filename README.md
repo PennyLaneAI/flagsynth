@@ -1,7 +1,7 @@
 # FlagSynth
 Unitary synthesis with the optimal number of rotation gates as presented in
 *Parameter-optimal unitary synthesis with flag decompositions* by
-Kottmann et al. [arXiv:unknown.id](https://arxiv.org/abs/unknown.id)
+Kottmann et al. [arXiv:2603.20376](https://arxiv.org/abs/2603.20376)
 
 ## Installation
 

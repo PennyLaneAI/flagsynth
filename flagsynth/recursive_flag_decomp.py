@@ -41,7 +41,7 @@ _y = qml.RY(-np.pi / 2, 0).matrix()
 @qml.QueuingManager.stop_recording()
 def two_qubit_flag_decomp(matrix: np.ndarray, wires: list) -> tuple[list, np.ndarray]:
     """Two-qubit flag decomposition as described in Alg. 4 in App. A of
-    `Kottmann et al. <arxiv.org/abs/unknown.id>`__.
+    `Kottmann et al. <arxiv.org/abs/2603.20376>`__.
 
     Args:
         matrix (np.ndarray): Matrix of shape ``(4, 4)`` to be decomposed.

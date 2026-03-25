@@ -85,7 +85,7 @@ def re_and_de_mux(A: np.ndarray, B: np.ndarray, angles: np.ndarray, wires: list,
 
     This function is used to absorb entangler gates that originate from Möttönen decompositions
     of multiplexed single-qubit rotations, effectively symmetrizing the Möttönen decomposition.
-    See Sec. IV A of Kottmann et al. (`arxiv:unknown.id <arxiv.org/abs/unknown.id>`__) for details.
+    See Sec. IV A of Kottmann et al. (`arxiv:2603.20376 <arxiv.org/abs/2603.20376>`__) for details.
 
     Args:
         A (np.ndarray): First unitary matrix for re-multiplexing.
@@ -163,7 +163,7 @@ def mottonen(
     Decomposes a k-controlled rotation into exactly :math:`2^k` single-qubit rotations
     interleaved with :math:`2^k` CNOT gates using a Gray code sequence.
     The symmetrization is discussed in Sec. IV A and App. D2 of
-    Kottmann et al. (`arxiv:unknown.id <arxiv.org/abs/unknown.id>`__).
+    Kottmann et al. (`arxiv:2603.20376 <arxiv.org/abs/2603.20376>`__).
 
     Args:
         theta (np.ndarray): Array of :math:`2^k` rotation angles.

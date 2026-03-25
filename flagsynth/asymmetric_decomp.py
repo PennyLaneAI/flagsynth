@@ -1,6 +1,6 @@
 """This module contains the asymmetric two-qubit decomposition from
 `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
-as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and
+as described in App. A of `Kottmann et al. <https://arxiv.org/abs/2603.20376>`__ and
 in Alg. 3 in particular.
 """
 
@@ -177,7 +177,7 @@ def _core_mat(theta, phi):
 def asymmetric_decomp(v: np.ndarray) -> tuple[list[np.ndarray], float]:
     """Compute the asymmetric decomposition of a two-qubit unitary matrix from
     `Shende et al. <https://arxiv.org/abs/quant-ph/0308033>`__, adapted to our purposes
-    as described in App. A of `Kottmann et al. <https://arxiv.org/abs/unknown.id>`__ and
+    as described in App. A of `Kottmann et al. <https://arxiv.org/abs/2603.20376>`__ and
     in Alg. 3 in particular.
 
     Args:
