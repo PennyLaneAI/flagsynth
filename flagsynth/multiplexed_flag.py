@@ -5,7 +5,7 @@ import numpy as np
 import pennylane as qml
 from pennylane.operation import Operation, Operator
 from pennylane.wires import Wires
-from pennylane.decomposition import add_decomps, register_resources, resource_rep, change_op_basis_resource_rep
+from pennylane.decomposition import add_decomps, register_resources, resource_rep, change_op_basis_resource_rep, adjoint_resource_rep
 from .linalg import mottonen
 
 
@@ -124,59 +124,98 @@ def _decomp_split_into_mux_rots(theta_z, theta_y, wires):
         qml.SelectPauliRot(theta_y, control_wires=wires[:-1], target_wire=wires[-1], rot_axis="Y")
 
 
-def _resources_split_into_phase_gradient(num_control_wires, num_angle_z_wires, num_angle_y_wires):
-    """Resource estimation for the phase gradient decomposition of MultiplexedFlag."""
+def _resources_split_into_phase_gradient(
+    num_control_wires,
+    num_angle_z_wires,
+    num_angle_y_wires,
+    num_phase_grad_wires,
+    num_work_wires,
+):
+    """Resource estimation for the phase gradient decomposition of MultiplexedFlag.
+
+    Mirrors the operator tree built by ``_decomp_split_into_phase_gradient`` exactly:
+
+        change_op_basis(
+            QROM,
+            Prod(op1, op2),
+        )
+
+    with
+        op1 = change_op_basis(Prod(cnots),         SemiAdder_rz)
+        op2 = change_op_basis(Prod(cnots, Hy_ad),  SemiAdder_ry)
+
+    where ``cnots`` are ``|0>``-controlled X gates (one per phase-gradient wire,
+    represented as ``MultiControlledX`` with a single zero control value) and
+    ``Hy_ad = Hadamard @ Adjoint(S)``.
+    """
 
     num_target_wires = num_angle_z_wires + num_angle_y_wires
     max_precision = max(num_angle_z_wires, num_angle_y_wires)
 
-    # The full structure is: change_op_basis(qrom, prod(op2, op1))
-    # where op1 = change_op_basis(cnots_rz, SemiAdder_rz)
-    #       op2 = change_op_basis(Hy_ad + cnots_ry, SemiAdder_ry)
+    # The SemiAdders consume ``max_precision - 1`` work wires; the QROM is given
+    # the remaining work wires (``work_wires[max_precision - 1:]``).
+    semiadder_work = max_precision - 1
+    qrom_work = num_work_wires - semiadder_work
 
-    # QROM: loaded once + unloaded once via change_op_basis
+    # QROM loaded once + unloaded once via change_op_basis.
     qrom_rep = resource_rep(
         qml.QROM,
         num_bitstrings=2**num_control_wires,
         num_control_wires=num_control_wires,
         num_target_wires=num_target_wires,
-        num_work_wires=0,  # adjust based on actual work wire allocation
+        num_work_wires=qrom_work,
         clean=False,
     )
 
-    # SemiAdder for RZ angles
+    # A single |0>-controlled X is a MultiControlledX with one zero control value.
+    mcx_rep = resource_rep(
+        qml.MultiControlledX,
+        num_control_wires=1,
+        num_zero_control_values=1,
+        num_work_wires=0,
+        work_wire_type="borrowed",
+    )
+
+    # Y-basis change on the target: Hadamard @ Adjoint(S).
+    hy_ad_rep = resource_rep(
+        qml.ops.Prod,
+        resources={
+            resource_rep(qml.Hadamard): 1,
+            adjoint_resource_rep(qml.S, base_params={}): 1,
+        },
+    )
+
     semiadder_rz_rep = resource_rep(
         qml.SemiAdder,
+        num_x_wires=num_angle_z_wires,
         num_y_wires=num_angle_z_wires,
+        num_work_wires=semiadder_work,
     )
-
-    # SemiAdder for RY angles
     semiadder_ry_rep = resource_rep(
         qml.SemiAdder,
+        num_x_wires=num_angle_y_wires,
         num_y_wires=num_angle_y_wires,
+        num_work_wires=semiadder_work,
     )
 
-    # CNOTs: max_precision per cnots block, called 4 times total
-    # (once in op1 compute, once in op1 uncompute, once in op2 compute, once in op2 uncompute)
-    cnot_count = 4 * max_precision
-
-    # H and S†: used in op2's basis change (compute + uncompute = 2 each)
-    h_count = 2
-    s_count = 2
+    # op1: basis change is one CNOT per phase-gradient wire.
+    op1_rep = change_op_basis_resource_rep(
+        resource_rep(qml.ops.Prod, resources={mcx_rep: num_phase_grad_wires}),
+        semiadder_rz_rep,
+    )
+    # op2: basis change is the same CNOTs plus the Y-basis change.
+    op2_rep = change_op_basis_resource_rep(
+        resource_rep(
+            qml.ops.Prod,
+            resources={mcx_rep: num_phase_grad_wires, hy_ad_rep: 1},
+        ),
+        semiadder_ry_rep,
+    )
 
     return {
         change_op_basis_resource_rep(
             qrom_rep,
-            resource_rep(qml.prod, resources={
-                change_op_basis_resource_rep(
-                    resource_rep(qml.CNOT, num_wires=2),  # cnots block
-                    semiadder_rz_rep,
-                ): 1,
-                change_op_basis_resource_rep(
-                    resource_rep(qml.CNOT, num_wires=2),  # Hy_ad + cnots block
-                    semiadder_ry_rep,
-                ): 1,
-            }),
+            resource_rep(qml.ops.Prod, resources={op1_rep: 1, op2_rep: 1}),
         ): 1,
     }
 
