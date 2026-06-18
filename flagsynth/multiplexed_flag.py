@@ -5,7 +5,11 @@ import numpy as np
 import pennylane as qml
 from pennylane.operation import Operation, Operator
 from pennylane.wires import Wires
-from pennylane.decomposition import add_decomps, register_resources, resource_rep, change_op_basis_resource_rep, adjoint_resource_rep
+from pennylane.decomposition import (
+    add_decomps, register_resources, resource_rep, change_op_basis_resource_rep, adjoint_resource_rep, 
+    controlled_resource_rep
+)
+from pennylane.ops import Prod
 from .linalg import mottonen
 
 
@@ -253,7 +257,7 @@ def _decomp_split_into_phase_gradient(
         control_wires,
         angle_wires_rz + angle_wires_ry,
         work_wires=work_wires[max_precision-1:],
-        clean=False,
+        clean=True,
     )
 
     # CNOTs controlled by |0> on target
@@ -284,5 +288,156 @@ def _decomp_split_into_phase_gradient(
 
     return op_phsg
 
+def _resources_split_into_phase_gradient_partial(
+    phis_rz: np.ndarray,
+    phis_ry: np.ndarray,
+    control_range,
+    control_wires: Wires,
+    target_wire: Wires,
+    angle_wires_rz: Wires,
+    angle_wires_ry: Wires,
+    phase_grad_wires: Wires,
+    work_wires: Wires,
+) -> dict:
+    """Resources for the phase-gradient decomposition of a RY @ RZ rotation
+    controlled by a contiguous range of control states [k_start, k)."""
+    precision_rz = len(angle_wires_rz)
+    precision_ry = len(angle_wires_ry)
+    max_precision = max(precision_rz, precision_ry)
 
-add_decomps(MultiplexedFlag, _decomp_cliff_rot, _decomp_split_into_mux_rots, _decomp_split_into_phase_gradient)
+    k_start, _ = control_range
+    num_control = len(control_wires)
+    num_pg = len(phase_grad_wires)
+
+    # Work-wire splits mirror the qfunc exactly.
+    semi_work = len(work_wires[: max_precision - 1])
+    qrom_work = len(work_wires[max_precision - 1 :])
+    num_bitstrings = len(phis_rz)
+
+    # ctrl(X, control=target_wire, control_values=[0]) -> 1 control, 1 zero-ctrl.
+    ctrl_x_rep = controlled_resource_rep(
+        qml.X, base_params={}, num_control_wires=1, num_zero_control_values=1
+    )
+
+    # Hy_ad = Hadamard @ adjoint(S) on the target wire.
+    hy_prod_rep = resource_rep(
+        Prod,
+        resources={resource_rep(qml.Hadamard): 1, adjoint_resource_rep(qml.S): 1},
+    )
+
+    # op1: change_op_basis(prod(*cnots), SemiAdder(rz, phase_grad[:precision_rz]))
+    op1_compute = resource_rep(Prod, resources={ctrl_x_rep: num_pg})
+    op1_target = resource_rep(
+        qml.SemiAdder,
+        num_x_wires=precision_rz,
+        num_y_wires=len(phase_grad_wires[:precision_rz]),
+        num_work_wires=semi_work,
+    )
+    op1_rep = change_op_basis_resource_rep(op1_compute, op1_target)
+
+    # op2: change_op_basis(prod(*[Hy_ad] + cnots), SemiAdder(ry, phase_grad[:precision_ry]))
+    op2_compute = resource_rep(Prod, resources={ctrl_x_rep: num_pg, hy_prod_rep: 1})
+    op2_target = resource_rep(
+        qml.SemiAdder,
+        num_x_wires=precision_ry,
+        num_y_wires=len(phase_grad_wires[:precision_ry]),
+        num_work_wires=semi_work,
+    )
+    op2_rep = change_op_basis_resource_rep(op2_compute, op2_target)
+
+    # target_op of the outer change_op_basis = prod(op2, op1)
+    target_prod_rep = resource_rep(Prod, resources={op2_rep: 1, op1_rep: 1})
+
+    # QROM (clean=False), loaded with the combined rz+ry binary angles.
+    qrom_rep = resource_rep(
+        qml.QROM,
+        clean=False,
+        num_bitstrings=num_bitstrings,
+        num_control_wires=num_control,
+        num_target_wires=precision_rz + precision_ry,
+        num_work_wires=qrom_work,
+    )
+
+    # compute_op of the outer change_op_basis: bare QROM, or QROM shifted by a BasisState.
+    if k_start == 0:
+        compute_rep = qrom_rep
+    else:
+        basis_rep = resource_rep(qml.BasisState, num_wires=num_control)
+        compute_rep = change_op_basis_resource_rep(basis_rep, qrom_rep)
+
+    top_rep = change_op_basis_resource_rep(compute_rep, target_prod_rep)
+    return {top_rep: 1}
+
+@register_resources(_resources_split_into_phase_gradient_partial)
+def _decomp_split_into_phase_gradient_partial(
+    phis_rz: np.ndarray,
+    phis_ry: np.ndarray,
+    control_start,
+    control_wires: Wires,
+    target_wire: Wires,
+    angle_wires_rz: Wires,
+    angle_wires_ry: Wires,
+    phase_grad_wires: Wires,
+    work_wires: Wires,
+) -> Operator:
+    """Phase-gradient decomposition of a RY @ RZ rotation controlled by a
+    contiguous range of control states ``[k_start, k)``.
+
+    ``phis_rz`` / ``phis_ry`` are the non-trivial angles, in the order of the 
+    active control states. ``control_start`` defines the first active control 
+    state. Precision is set implicitly by the angle-wire lengths.
+    """
+    precision_rz = len(angle_wires_rz)
+    precision_ry = len(angle_wires_ry)
+    max_precision = max(precision_rz, precision_ry)
+
+    # Digitize both angle sets and combine them for parallel loading
+    binary_int_rz = qml.math.binary_decimals(phis_rz, precision_rz, unit=4 * np.pi)
+    binary_int_ry = qml.math.binary_decimals(phis_ry, precision_ry, unit=4 * np.pi)
+    binary_int = [list(a) + list(b) for a, b in zip(binary_int_rz, binary_int_ry)]
+
+    qrom = qml.QROM(
+        binary_int,
+        control_wires,
+        angle_wires_rz + angle_wires_ry,
+        work_wires=work_wires[max_precision - 1:],
+        clean=True,
+    )
+
+    if control_start == 0:
+        qrom_shifted = qrom
+    else:
+        sub = qml.BasisState(control_start, control_wires)
+        qrom_shifted = qml.change_op_basis(sub, qrom)
+
+    # CNOTs controlled by |0> on target
+    cnots = [
+        qml.ctrl(qml.X(wire), control=target_wire, control_values=[0])
+        for wire in phase_grad_wires
+    ]
+
+    # Op1: RZ addition
+    op1 = qml.change_op_basis(
+        qml.prod(*cnots),
+        qml.SemiAdder(angle_wires_rz, phase_grad_wires[:precision_rz], work_wires=work_wires[:max_precision - 1]),
+    )
+
+    # Op2: RY addition (Y-basis change + CNOTs)
+    Hy_ad = qml.Hadamard(target_wire) @ qml.adjoint(qml.S(target_wire))
+    compute = [Hy_ad] + cnots
+    op2 = qml.change_op_basis(
+        qml.prod(*compute[::-1]),
+        qml.SemiAdder(angle_wires_ry, phase_grad_wires[:precision_ry], work_wires=work_wires[:max_precision - 1]),
+    )
+
+    ops = qml.change_op_basis(qrom_shifted, qml.prod(op2, op1))
+    
+    return ops
+
+
+add_decomps(
+    MultiplexedFlag, 
+    _decomp_cliff_rot, 
+    _decomp_split_into_mux_rots, 
+    _decomp_split_into_phase_gradient,
+    _decomp_split_into_phase_gradient_partial)
